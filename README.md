@@ -28,19 +28,42 @@ make run        # start it on the TV + screenshot to /tmp/launcher-shot.png
 make kill       # stop it
 ```
 
-## Controls (v0)
+## Controls (v1)
 
 | Input | Action |
 |-------|--------|
-| ← / → (or d-pad / left stick) | move selection |
-| Esc | quit to desktop |
-| Enter / A | *(nothing yet — launching is v1)* |
+| ← / → / ↑ / ↓ (or d-pad / left stick) | move selection |
+| Enter / Space (or pad button A) | open section / launch game |
+| Esc (or pad button B) | back / quit to desktop |
+
+Games/Music/Movies come from `games.json` (laptop side) → `assets/games.cfg`
+(box side). The launcher minimizes while a game runs and takes the screen
+back when it exits (verified with Quake 2).
+
+## Remote control (for Claude / scripting)
+
+The launcher polls `ctl.txt` next to its exe ~5×/s and executes one command:
+`left right up down enter back quit`. Drop it over the share:
+
+```bash
+echo enter > /media/Acer_Notebook/launcher/ctl.txt
+```
+
+This exists because nircmd's synthetic Enter/Esc/Space reach SDL with a null
+scancode and get dropped (arrows survive) — and it doubles as the automation
+hook (the laptop can drive the whole UI).
+
+## Rendering model
+
+Every screen state is a full 1024x768 BMP pre-rendered by `gen-assets.py`
+at 2x and LANCZOS-downscaled (free supersampled AA): gradients, glow, drawn
+icons, type. The box blits exactly one texture per frame — the Atom never
+composites anything. Adding a game = edit `games.json`, `make deploy`.
 
 ## Roadmap
 
-- v1: Enter opens a section; Games list driven by a plain-text config
-  (`C:\GOG Games` + desktop launchers), launch + wait + regain fullscreen.
-- v2: cover art tiles (rendered on the laptop, shipped as BMPs), music/movies
-  sections wired to foobar2000 / MPC-HC.
-- v3: boot-chain "cosplay" (shell replacement + attract mode) — prerequisite:
-  convert freeSSHd/VNC to real services first (see ideas doc, safety notes).
+- v2: cover art on the list screen (rendered on the laptop, shipped in the
+  state BMPs), attract mode on idle, "CONTINUE?" last-played row.
+- v3: boot-chain "cosplay" (shell replacement + fake console boot video) —
+  prerequisite: convert freeSSHd/VNC to real services first (see ideas doc,
+  safety notes).

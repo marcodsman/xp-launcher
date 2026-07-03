@@ -23,7 +23,8 @@ assets:
 deploy: all kill
 	mkdir -p $(DEPLOY)/assets
 	cp $(BUILD)/launcher.exe $(SDL)/bin/SDL2.dll $(DEPLOY)/
-	cp assets/*.bmp $(DEPLOY)/assets/
+	rm -f $(DEPLOY)/assets/*
+	cp assets/*.bmp assets/games.cfg $(DEPLOY)/assets/
 
 # Launch on the box (lands on the TV) and grab a screenshot to verify.
 run:
