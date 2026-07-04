@@ -2,6 +2,9 @@
   "music":  { "exe": "C:\\Program Files\\foobar2000\\foobar2000.exe" },
   "movies": { "exe": "C:\\Program Files\\MPC-HC\\mpc-hc.exe" },
   "games": [
+    { "name": "xp-craft",
+      "exe": "C:\\XP_Share\\xp-craft\\xp-craft.exe",
+      "cwd": "C:\\XP_Share\\xp-craft" },
     { "name": "Quake 2",
       "exe": "C:\\Program Files\\Quake2\\quake2.exe" },
     { "name": "Jazz Jackrabbit 2",
