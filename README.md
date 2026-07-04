@@ -53,12 +53,32 @@ This exists because nircmd's synthetic Enter/Esc/Space reach SDL with a null
 scancode and get dropped (arrows survive) — and it doubles as the automation
 hook (the laptop can drive the whole UI).
 
+## Starting it on the box
+
+An **"Entertainment System"** shortcut (green gamepad icon, embedded via
+windres) lives on the XP desktop, in the Start Menu, and in **Startup** — so
+it also comes up on boot. The exe is single-instance: running the shortcut
+while it's already open just restores/focuses the running one, so it's
+always safe to click. Recreate the shortcuts anytime with `make shortcuts`
+(runs `scripts/mklnk.vbs` on the box; uses the All Users folders).
+
+To get back to it from the desktop without a mouse: **Ctrl+Esc** (Start
+menu) → it's pinned right there, or click its taskbar button.
+
 ## Rendering model
 
 Every screen state is a full 1024x768 BMP pre-rendered by `gen-assets.py`
 at 2x and LANCZOS-downscaled (free supersampled AA): gradients, glow, drawn
 icons, type. The box blits exactly one texture per frame — the Atom never
 composites anything. Adding a game = edit `games.json`, `make deploy`.
+
+## Pending games
+
+- **SuperTux** — a modern build (worlds, powerups, editor) is in progress at
+  `../supertux-xp`, cross-compiled for XP with the SDL/D3D9 renderer (OpenGL is dead on
+  the GMA500). **TODO:** once `supertux2.exe` builds and runs on the box, add a `games.json`
+  entry for it and `make deploy`. The old featherweight SuperTux 0.1.3 is already installed
+  at `C:\supertux` as a fallback that runs today.
 
 ## Roadmap
 

@@ -11,9 +11,13 @@ DEPLOY  = /media/Acer_Notebook/launcher
 
 all: $(BUILD)/launcher.exe assets
 
-$(BUILD)/launcher.exe: src/main.c
+$(BUILD)/launcher.exe: src/main.c $(BUILD)/icon.o
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ src/main.c $(BUILD)/icon.o $(LDFLAGS)
+
+$(BUILD)/icon.o: src/launcher.rc src/launcher.ico
+	@mkdir -p $(BUILD)
+	i686-w64-mingw32-windres --include-dir src -i src/launcher.rc -o $@
 
 assets:
 	python3 scripts/gen-assets.py
@@ -38,3 +42,8 @@ clean:
 	rm -rf $(BUILD)
 
 .PHONY: all assets deploy run kill clean
+
+# One-time install: desktop/start-menu/startup shortcuts on the box.
+shortcuts:
+	cp scripts/mklnk.vbs /media/Acer_Notebook/
+	~/bin/xprun 'cscript //nologo c:\XP_Share\mklnk.vbs'

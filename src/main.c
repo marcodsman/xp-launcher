@@ -166,9 +166,23 @@ static void launch(SDL_Window *win, SDL_Renderer *ren, const Entry *e)
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);  /* drop input queued while away */
 }
 
+#define WIN_TITLE "Performa Entertainment System"
+
 int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
+
+    /* Single instance: re-running the shortcut focuses the existing one. */
+    CreateMutexA(NULL, FALSE, "xp_launcher_single");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        HWND w = FindWindowA(NULL, WIN_TITLE);
+        if (w) {
+            ShowWindow(w, SW_RESTORE);
+            SetForegroundWindow(w);
+        }
+        return 0;
+    }
+
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) {
@@ -179,7 +193,7 @@ int main(int argc, char *argv[])
     SDL_JoystickEventState(SDL_ENABLE);
     SDL_Joystick *joy = SDL_NumJoysticks() > 0 ? SDL_JoystickOpen(0) : NULL;
 
-    SDL_Window *win = SDL_CreateWindow("Performa Entertainment System",
+    SDL_Window *win = SDL_CreateWindow(WIN_TITLE,
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 0, 0,
         SDL_WINDOW_FULLSCREEN_DESKTOP);
     SDL_Renderer *ren = win ? SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE) : NULL;
