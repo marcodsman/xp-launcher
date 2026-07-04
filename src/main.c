@@ -185,13 +185,26 @@ int main(int argc, char *argv[])
 
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) != 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK |
+                 SDL_INIT_GAMECONTROLLER) != 0) {
         SDL_Log("SDL_Init: %s", SDL_GetError());
         return 1;
     }
     SDL_ShowCursor(SDL_DISABLE);
     SDL_JoystickEventState(SDL_ENABLE);
-    SDL_Joystick *joy = SDL_NumJoysticks() > 0 ? SDL_JoystickOpen(0) : NULL;
+
+    /* xp-pad mapping (padwiz): with it the pad becomes a real GameController
+     * with PS-correct buttons (A=cross accept, B=circle back). The raw
+     * joystick path below stays as fallback when no mapping matches. */
+    int nmaps = SDL_GameControllerAddMappingsFromFile(
+        "C:\\XP_Share\\gamecontrollerdb.txt");
+    SDL_Log("gamecontrollerdb: %d mapping(s)", nmaps);
+    SDL_GameController *ctrl = NULL;
+    for (int i = 0; i < SDL_NumJoysticks() && !ctrl; i++)
+        if (SDL_IsGameController(i))
+            ctrl = SDL_GameControllerOpen(i);
+    SDL_Joystick *joy = (!ctrl && SDL_NumJoysticks() > 0)
+                      ? SDL_JoystickOpen(0) : NULL;
 
     SDL_Window *win = SDL_CreateWindow(WIN_TITLE,
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 0, 0,
@@ -249,13 +262,45 @@ int main(int argc, char *argv[])
                 default: break;
                 }
                 break;
+            case SDL_CONTROLLERBUTTONDOWN:
+                switch (e.cbutton.button) {
+                case SDL_CONTROLLER_BUTTON_DPAD_LEFT:  nav_x = -1; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_RIGHT: nav_x = 1; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_UP:    nav_y = -1; break;
+                case SDL_CONTROLLER_BUTTON_DPAD_DOWN:  nav_y = 1; break;
+                case SDL_CONTROLLER_BUTTON_A:                     /* cross */
+                case SDL_CONTROLLER_BUTTON_START:      accept = 1; break;
+                case SDL_CONTROLLER_BUTTON_B:          back = 1; break;
+                default: break;
+                }
+                break;
+            case SDL_CONTROLLERAXISMOTION:
+                if (e.caxis.axis > SDL_CONTROLLER_AXIS_LEFTY) break;
+                if (e.caxis.value < -16000 && !axis_latch) {
+                    if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX)
+                        nav_x = -1;
+                    else
+                        nav_y = -1;
+                    axis_latch = 1;
+                } else if (e.caxis.value > 16000 && !axis_latch) {
+                    if (e.caxis.axis == SDL_CONTROLLER_AXIS_LEFTX)
+                        nav_x = 1;
+                    else
+                        nav_y = 1;
+                    axis_latch = 1;
+                } else if (e.caxis.value > -8000 && e.caxis.value < 8000) {
+                    axis_latch = 0;
+                }
+                break;
             case SDL_JOYHATMOTION:
+                if (ctrl) break;    /* controller path handles the pad */
                 if (e.jhat.value & SDL_HAT_LEFT)  nav_x = -1;
                 if (e.jhat.value & SDL_HAT_RIGHT) nav_x = 1;
                 if (e.jhat.value & SDL_HAT_UP)    nav_y = -1;
                 if (e.jhat.value & SDL_HAT_DOWN)  nav_y = 1;
                 break;
             case SDL_JOYAXISMOTION:
+                if (ctrl) break;
                 if (e.jaxis.axis > 1) break;
                 if (e.jaxis.value < -16000 && !axis_latch) {
                     if (e.jaxis.axis == 0) nav_x = -1; else nav_y = -1;
@@ -268,6 +313,7 @@ int main(int argc, char *argv[])
                 }
                 break;
             case SDL_JOYBUTTONDOWN:
+                if (ctrl) break;
                 if (e.jbutton.button == 0) accept = 1;   /* A */
                 if (e.jbutton.button == 1) back = 1;     /* B */
                 break;
@@ -297,6 +343,7 @@ int main(int argc, char *argv[])
         SDL_Delay(33);   /* ~30fps is plenty for a menu; be kind to the Atom */
     }
 
+    if (ctrl) SDL_GameControllerClose(ctrl);
     if (joy) SDL_JoystickClose(joy);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
