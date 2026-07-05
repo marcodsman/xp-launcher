@@ -20,6 +20,7 @@
 #include <string.h>
 
 #define MAX_GAMES 64
+#define WIN_TITLE "Performa Entertainment System"
 
 typedef struct {
     char exe[512];
@@ -184,7 +185,7 @@ static void load_cfg(const char *dir)
  * keypresses reach SDL with a null scancode for Return/Escape/Space, so
  * remote testing can't use the keyboard path. Polled a few times a second. */
 static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
-                     int *accept, int *back, int *quit)
+                     int *accept, int *back, int *quit, int *show)
 {
     char path[600];
     SDL_snprintf(path, sizeof path, "%s\\ctl.txt", dir);
@@ -202,12 +203,18 @@ static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
     else if (strcmp(cmd, "enter") == 0) *accept = 1;
     else if (strcmp(cmd, "back") == 0)  *back = 1;
     else if (strcmp(cmd, "quit") == 0)  *quit = 1;
+    else if (strcmp(cmd, "show") == 0)  *show = 1;
 }
 
-/* Run the entry and block until it exits; launcher minimizes meanwhile. */
+/* The running child (game/player), if any. The launcher does NOT block on
+ * it: the main loop keeps pumping (minimized) so SELECT can summon us back,
+ * and reap_child() notices the exit. One child at a time. */
+static HANDLE child;
+
+/* Start the entry and minimize; the main loop babysits it from here. */
 static void launch(SDL_Window *win, SDL_Renderer *ren, const Entry *e)
 {
-    if (!e->exe[0]) return;
+    if (!e->exe[0] || child) return;
 
     if (tex_launch) {               /* "STARTING…" while the child boots */
         SDL_RenderCopy(ren, tex_launch, NULL, NULL);
@@ -231,17 +238,31 @@ static void launch(SDL_Window *win, SDL_Renderer *ren, const Entry *e)
         SDL_Log("CreateProcess failed (%lu): %s", GetLastError(), cmd);
         return;
     }
-    SDL_MinimizeWindow(win);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-
-    SDL_RestoreWindow(win);
-    SDL_RaiseWindow(win);
-    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);  /* drop input queued while away */
+    child = pi.hProcess;
+    SDL_Log("launched: %s", cmd);
+    SDL_MinimizeWindow(win);
 }
 
-#define WIN_TITLE "Performa Entertainment System"
+/* Bring the launcher to the front (SELECT button, ctl "show"). */
+static void summon(SDL_Window *win)
+{
+    SDL_RestoreWindow(win);
+    SDL_RaiseWindow(win);
+    HWND w = FindWindowA(NULL, WIN_TITLE);
+    if (w) SetForegroundWindow(w);
+}
+
+/* If the child exited, clean up and take the screen back. */
+static void reap_child(SDL_Window *win)
+{
+    if (!child || WaitForSingleObject(child, 0) != WAIT_OBJECT_0) return;
+    CloseHandle(child);
+    child = NULL;
+    SDL_Log("child exited; reclaiming screen");
+    summon(win);
+    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);  /* drop input queued while away */
+}
 
 int main(int argc, char *argv[])
 {
@@ -259,6 +280,9 @@ int main(int argc, char *argv[])
     }
 
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "software");
+    /* Keep pad input flowing while minimized behind a game — SELECT must
+     * work as a global "home" button. */
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK |
                  SDL_INIT_GAMECONTROLLER) != 0) {
@@ -315,11 +339,13 @@ int main(int argc, char *argv[])
 
     int ctl_tick = 0;
     while (running) {
-        int nav_x = 0, nav_y = 0, accept = 0, back = 0, quit = 0;
+        int nav_x = 0, nav_y = 0, accept = 0, back = 0, quit = 0, show = 0;
+
+        reap_child(win);
 
         if (++ctl_tick >= 6) {          /* ~5x/sec is plenty */
             ctl_tick = 0;
-            poll_ctl(dir, &nav_x, &nav_y, &accept, &back, &quit);
+            poll_ctl(dir, &nav_x, &nav_y, &accept, &back, &quit, &show);
             if (quit) running = 0;
         }
 
@@ -350,6 +376,7 @@ int main(int argc, char *argv[])
                 case SDL_CONTROLLER_BUTTON_A:                     /* cross */
                 case SDL_CONTROLLER_BUTTON_START:      accept = 1; break;
                 case SDL_CONTROLLER_BUTTON_B:          back = 1; break;
+                case SDL_CONTROLLER_BUTTON_BACK:       show = 1; break; /* SELECT */
                 default: break;
                 }
                 break;
@@ -402,9 +429,12 @@ int main(int argc, char *argv[])
                 if (is_mapped(e.jbutton.which)) break;
                 if (e.jbutton.button == 0) accept = 1;   /* A */
                 if (e.jbutton.button == 1) back = 1;     /* B */
+                if (e.jbutton.button == 8) show = 1;     /* SELECT (typical) */
                 break;
             }
         }
+
+        if (show) summon(win);
 
         if (screen == HOME) {
             if (nav_x < 0 && sel_home > 0) sel_home--;

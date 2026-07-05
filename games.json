@@ -3,8 +3,8 @@
   "movies": { "exe": "C:\\Program Files\\MPC-HC\\mpc-hc.exe" },
   "games": [
     { "name": "SuperTux",
-      "exe": "C:\\XP_Share\\supertux2\\supertux2.exe",
-      "args": "--renderer sdl",
+      "exe": "C:\\WINDOWS\\system32\\cmd.exe",
+      "args": "/c C:\\XP_Share\\supertux2\\supertux.bat",
       "cwd": "C:\\XP_Share\\supertux2" },
     { "name": "xp-craft",
       "exe": "C:\\XP_Share\\xp-craft\\xp-craft.exe",
