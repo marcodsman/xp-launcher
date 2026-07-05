@@ -15,6 +15,7 @@
  * runs and takes the screen back when it exits.
  */
 #include <SDL.h>
+#include <SDL_syswm.h>
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
@@ -320,6 +321,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Native handle for foreground checks (see the input gate below). */
+    HWND our_hwnd = NULL;
+    {
+        SDL_SysWMinfo wm;
+        SDL_VERSION(&wm.version);
+        if (SDL_GetWindowWMInfo(win, &wm))
+            our_hwnd = wm.info.win.window;
+    }
+
     load_cfg(dir);
 
     char name[64];
@@ -435,6 +445,17 @@ int main(int argc, char *argv[])
         }
 
         if (show) summon(win);
+
+        /* Only act on navigation / launching when we are actually the
+         * foreground window. We keep reading the gamepad in the background
+         * (SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS) ONLY so SELECT can
+         * summon us back — but without this gate, every other button leaks
+         * through while a game is running and launches things behind it.
+         * A game we launched sets `child`; but a game started outside the
+         * launcher (or any other foreground app) must suppress us too, so
+         * gate on the real foreground state, not just `child`. */
+        if (GetForegroundWindow() != our_hwnd)
+            nav_x = nav_y = accept = back = 0;
 
         if (screen == HOME) {
             if (nav_x < 0 && sel_home > 0) sel_home--;
