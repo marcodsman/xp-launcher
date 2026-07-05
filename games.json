@@ -2,6 +2,10 @@
   "music":  { "exe": "C:\\Program Files\\foobar2000\\foobar2000.exe" },
   "movies": { "exe": "C:\\Program Files\\MPC-HC\\mpc-hc.exe" },
   "games": [
+    { "name": "SuperTux",
+      "exe": "C:\\XP_Share\\supertux2\\supertux2.exe",
+      "args": "--renderer sdl",
+      "cwd": "C:\\XP_Share\\supertux2" },
     { "name": "xp-craft",
       "exe": "C:\\XP_Share\\xp-craft\\xp-craft.exe",
       "cwd": "C:\\XP_Share\\xp-craft" },

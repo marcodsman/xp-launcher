@@ -35,6 +35,81 @@ static SDL_Texture *tex_home[3];
 static SDL_Texture *tex_list[MAX_GAMES];
 static SDL_Texture *tex_launch;
 
+/* All connected pads. The dual PS2-style adapter is TWO joystick devices on
+ * one USB port — open everything, not just index 0, so both ports work. */
+#define MAX_PADS 8
+static SDL_GameController *pads[MAX_PADS];
+static int n_pads = 0;
+static SDL_Joystick *raw_joys[MAX_PADS];
+static int n_raw = 0;
+
+static FILE *logf;   /* SDL_Log goes nowhere under -mwindows; tee to a file */
+
+static void log_to_file(void *ud, int cat, SDL_LogPriority pri, const char *msg)
+{
+    (void)ud; (void)cat; (void)pri;
+    if (logf) {
+        fprintf(logf, "%s\n", msg);
+        fflush(logf);
+    }
+}
+
+/* Open device index i as a mapped controller if possible, else raw joystick. */
+static void open_pad(int i)
+{
+    if (SDL_IsGameController(i)) {
+        SDL_GameController *c = SDL_GameControllerOpen(i);
+        if (c && n_pads < MAX_PADS) {
+            pads[n_pads++] = c;
+            SDL_Log("pad %d: %s (mapped controller)", i,
+                    SDL_GameControllerName(c));
+        }
+    } else {
+        SDL_Joystick *j = SDL_JoystickOpen(i);
+        if (j && n_raw < MAX_PADS) {
+            raw_joys[n_raw++] = j;
+            SDL_Log("pad %d: %s (raw joystick)", i, SDL_JoystickName(j));
+        }
+    }
+}
+
+/* Instance id already open? (JOYDEVICEADDED can fire for known devices.) */
+static int pad_known(SDL_JoystickID id)
+{
+    for (int i = 0; i < n_pads; i++)
+        if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[i])) == id)
+            return 1;
+    for (int i = 0; i < n_raw; i++)
+        if (SDL_JoystickInstanceID(raw_joys[i]) == id)
+            return 1;
+    return 0;
+}
+
+static void close_pad(SDL_JoystickID id)
+{
+    for (int i = 0; i < n_pads; i++)
+        if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(pads[i])) == id) {
+            SDL_GameControllerClose(pads[i]);
+            pads[i] = pads[--n_pads];
+            SDL_Log("controller instance %d removed", (int)id);
+            return;
+        }
+    for (int i = 0; i < n_raw; i++)
+        if (SDL_JoystickInstanceID(raw_joys[i]) == id) {
+            SDL_JoystickClose(raw_joys[i]);
+            raw_joys[i] = raw_joys[--n_raw];
+            SDL_Log("joystick instance %d removed", (int)id);
+            return;
+        }
+}
+
+/* Raw joystick events from a device opened as a GameController would double
+ * up with the controller events — skip those. */
+static int is_mapped(SDL_JoystickID id)
+{
+    return SDL_GameControllerFromInstanceID(id) != NULL;
+}
+
 /* Directory containing the exe, so assets resolve no matter the cwd. */
 static void exe_dir(char *out, size_t n)
 {
@@ -193,18 +268,24 @@ int main(int argc, char *argv[])
     SDL_ShowCursor(SDL_DISABLE);
     SDL_JoystickEventState(SDL_ENABLE);
 
-    /* xp-pad mapping (padwiz): with it the pad becomes a real GameController
+    char dir[512];
+    exe_dir(dir, sizeof dir);
+    {
+        char lp[600];
+        SDL_snprintf(lp, sizeof lp, "%s\\launcher.log", dir);
+        logf = fopen(lp, "w");
+        SDL_LogSetOutputFunction(log_to_file, NULL);
+    }
+
+    /* xp-pad mapping (padwiz): with it the pads become real GameControllers
      * with PS-correct buttons (A=cross accept, B=circle back). The raw
      * joystick path below stays as fallback when no mapping matches. */
     int nmaps = SDL_GameControllerAddMappingsFromFile(
         "C:\\XP_Share\\gamecontrollerdb.txt");
     SDL_Log("gamecontrollerdb: %d mapping(s)", nmaps);
-    SDL_GameController *ctrl = NULL;
-    for (int i = 0; i < SDL_NumJoysticks() && !ctrl; i++)
-        if (SDL_IsGameController(i))
-            ctrl = SDL_GameControllerOpen(i);
-    SDL_Joystick *joy = (!ctrl && SDL_NumJoysticks() > 0)
-                      ? SDL_JoystickOpen(0) : NULL;
+    SDL_Log("%d joystick device(s) at startup", SDL_NumJoysticks());
+    for (int i = 0; i < SDL_NumJoysticks(); i++)
+        open_pad(i);
 
     SDL_Window *win = SDL_CreateWindow(WIN_TITLE,
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 0, 0,
@@ -215,8 +296,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    char dir[512];
-    exe_dir(dir, sizeof dir);
     load_cfg(dir);
 
     char name[64];
@@ -292,15 +371,22 @@ int main(int argc, char *argv[])
                     axis_latch = 0;
                 }
                 break;
+            case SDL_JOYDEVICEADDED:      /* hotplug: pads can join anytime */
+                if (!pad_known(SDL_JoystickGetDeviceInstanceID(e.jdevice.which)))
+                    open_pad(e.jdevice.which);
+                break;
+            case SDL_JOYDEVICEREMOVED:
+                close_pad(e.jdevice.which);
+                break;
             case SDL_JOYHATMOTION:
-                if (ctrl) break;    /* controller path handles the pad */
+                if (is_mapped(e.jhat.which)) break;  /* controller path handles it */
                 if (e.jhat.value & SDL_HAT_LEFT)  nav_x = -1;
                 if (e.jhat.value & SDL_HAT_RIGHT) nav_x = 1;
                 if (e.jhat.value & SDL_HAT_UP)    nav_y = -1;
                 if (e.jhat.value & SDL_HAT_DOWN)  nav_y = 1;
                 break;
             case SDL_JOYAXISMOTION:
-                if (ctrl) break;
+                if (is_mapped(e.jaxis.which)) break;
                 if (e.jaxis.axis > 1) break;
                 if (e.jaxis.value < -16000 && !axis_latch) {
                     if (e.jaxis.axis == 0) nav_x = -1; else nav_y = -1;
@@ -313,7 +399,7 @@ int main(int argc, char *argv[])
                 }
                 break;
             case SDL_JOYBUTTONDOWN:
-                if (ctrl) break;
+                if (is_mapped(e.jbutton.which)) break;
                 if (e.jbutton.button == 0) accept = 1;   /* A */
                 if (e.jbutton.button == 1) back = 1;     /* B */
                 break;
@@ -343,8 +429,9 @@ int main(int argc, char *argv[])
         SDL_Delay(33);   /* ~30fps is plenty for a menu; be kind to the Atom */
     }
 
-    if (ctrl) SDL_GameControllerClose(ctrl);
-    if (joy) SDL_JoystickClose(joy);
+    for (int i = 0; i < n_pads; i++) SDL_GameControllerClose(pads[i]);
+    for (int i = 0; i < n_raw; i++) SDL_JoystickClose(raw_joys[i]);
+    if (logf) fclose(logf);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
