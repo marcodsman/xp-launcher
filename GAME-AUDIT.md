@@ -21,9 +21,9 @@ Legend: ✅ works · ⚠️ works with caveat · ❌ broken · ❓ untested
 | Mortal Kombat II (DOSBox) | ⚠️ | ❌ | **Runs (not black) but takes NO input — keyboard or pad** (user, 2026-07-05). Different failure from MK1. Even keyboard dead → likely a DOSBox focus/`usescancodes` config issue, not just missing pad support (joy2key alone won't fix it). |
 | Mortal Kombat 3 (DOSBox) | ❌ | — | **Crashes immediately** (user, 2026-07-05). Third distinct DOSBox failure (MK1 black, MK2 no-input, MK3 crash) — the DOSBox packages/config on this box need a proper look. |
 | Mortal Kombat 4 | ✅ | ⚠️ | **Runs fine, controller works — but mapping is weird** (user, 2026-07-05). Native `mk4.exe`, not DOSBox. Fixable via the game's own control config (like SRB2). |
-| Mortal Kombat Trilogy | ❓ | ❓ | |
-| The Heart of Darkness | ❓ | ❓ | |
-| Grim Fandango | ❓ | ❓ | |
+| Mortal Kombat Trilogy | ⚠️ | ❓ | **Unplayably slow** (user, 2026-07-05) — possibly temporary (background contention?); recheck on a clean box. |
+| The Heart of Darkness | ⚠️ | ❌ | Runs windowed; **doesn't detect the controller** (user, 2026-07-05) → keyboard-only, joy2key case. |
+| Grim Fandango | ❌ | — | **Shows an error on screen** (user, 2026-07-05). GrimE engine — likely a DirectX/display init failure on the GMA500. Investigate (dgVoodoo/software wrapper?) or remove. |
 | Legacy of Kain: Defiance | ❓ | ❓ | 2003 D3D — GMA500 risk, likely won't render; verify |
 
 ## To do (deferred — user is spot-checking manually)

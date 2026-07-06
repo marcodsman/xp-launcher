@@ -22,6 +22,7 @@
 #include <string.h>
 
 #define MAX_GAMES 64
+#define MAX_MEDIA 128
 #define WIN_TITLE "Performa Entertainment System"
 
 typedef struct {
@@ -30,12 +31,20 @@ typedef struct {
     char cwd[512];
 } Entry;
 
-static Entry music, movies;
+static Entry music, movies;             /* home-tile default players */
 static Entry games[MAX_GAMES];
 static int n_games = 0;
+/* Media: each entry launches the section player with a file (see load_cfg).
+ * `movies`/`music` above are the players; these are the browsable items. */
+static Entry movie_items[MAX_MEDIA];
+static int n_movies = 0;
+static Entry song_items[MAX_MEDIA];
+static int n_songs = 0;
 
 static SDL_Texture *tex_home[3];
 static SDL_Texture *tex_list[MAX_GAMES];
+static SDL_Texture *tex_movie[MAX_MEDIA];
+static SDL_Texture *tex_song[MAX_MEDIA];
 static SDL_Texture *tex_launch;
 
 /* All connected pads. The dual PS2-style adapter is TWO joystick devices on
@@ -173,6 +182,10 @@ static void load_cfg(const char *dir)
         else if (strcmp(key, "movies") == 0) e = &movies;
         else if (strcmp(key, "game") == 0 && n_games < MAX_GAMES)
             e = &games[n_games++];
+        else if (strcmp(key, "movie") == 0 && n_movies < MAX_MEDIA)
+            e = &movie_items[n_movies++];
+        else if (strcmp(key, "song") == 0 && n_songs < MAX_MEDIA)
+            e = &song_items[n_songs++];
         if (!e) continue;
         SDL_strlcpy(e->exe, exe, sizeof e->exe);
         SDL_strlcpy(e->args, args, sizeof e->args);
@@ -366,6 +379,14 @@ int main(int argc, char *argv[])
         SDL_snprintf(name, sizeof name, "list_%d.bmp", i);
         tex_list[i] = load_bmp(ren, dir, name);
     }
+    for (int i = 0; i < n_movies; i++) {
+        SDL_snprintf(name, sizeof name, "movie_%d.bmp", i);
+        tex_movie[i] = load_bmp(ren, dir, name);
+    }
+    for (int i = 0; i < n_songs; i++) {
+        SDL_snprintf(name, sizeof name, "song_%d.bmp", i);
+        tex_song[i] = load_bmp(ren, dir, name);
+    }
     tex_launch = load_bmp(ren, dir, "launch.bmp");
 
     /* Audio: never fatal — if the device won't open, run silent. */
@@ -386,19 +407,23 @@ int main(int argc, char *argv[])
         SDL_Log("Mix_OpenAudio: %s (running silent)", Mix_GetError());
     }
 
-    enum { HOME, LIST } screen = HOME;
-    int sel_home = 0, sel_list = 0;
+    enum { HOME, LIST, MLIST, SLIST } screen = HOME;
+    int sel_home = 0, sel_list = 0, sel_mov = 0, sel_song = 0;
     int running = 1, axis_latch = 0;
 
     int ctl_tick = 0;
     while (running) {
         int nav_x = 0, nav_y = 0, accept = 0, back = 0, quit = 0, show = 0;
+        /* ctl remote intents, kept separate: they're trusted automation and
+         * bypass the foreground gate that (rightly) suppresses stray pad
+         * input from the background. Merged in after the gate. */
+        int cx = 0, cy = 0, cacc = 0, cbk = 0, csh = 0;
 
         reap_child(win);
 
         if (++ctl_tick >= 6) {          /* ~5x/sec is plenty */
             ctl_tick = 0;
-            poll_ctl(dir, &nav_x, &nav_y, &accept, &back, &quit, &show);
+            poll_ctl(dir, &cx, &cy, &cacc, &cbk, &quit, &csh);
             if (quit) running = 0;
         }
 
@@ -487,18 +512,25 @@ int main(int argc, char *argv[])
             }
         }
 
+        show |= csh;
         if (show) summon(win);
 
-        /* Only act on navigation / launching when we are actually the
-         * foreground window. We keep reading the gamepad in the background
-         * (SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS) ONLY so SELECT can
-         * summon us back — but without this gate, every other button leaks
-         * through while a game is running and launches things behind it.
-         * A game we launched sets `child`; but a game started outside the
-         * launcher (or any other foreground app) must suppress us too, so
-         * gate on the real foreground state, not just `child`. */
+        /* Only act on PHYSICAL navigation / launching when we are actually
+         * the foreground window. We keep reading the gamepad in the
+         * background (SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS) ONLY so
+         * SELECT can summon us back — but without this gate, every other
+         * button leaks through while a game is running and launches things
+         * behind it. A game we launched sets `child`; but a game started
+         * outside the launcher (or any other foreground app) must suppress
+         * us too, so gate on the real foreground state, not just `child`. */
         if (GetForegroundWindow() != our_hwnd)
             nav_x = nav_y = accept = back = 0;
+
+        /* ctl remote is exempt from the gate (trusted, local-only). */
+        if (!nav_x) nav_x = cx;
+        if (!nav_y) nav_y = cy;
+        accept |= cacc;
+        back |= cbk;
 
         if (nav_x || nav_y) sfx(sfx_move);
 
@@ -510,18 +542,38 @@ int main(int argc, char *argv[])
                 if (sel_home == 0 && n_games > 0) {
                     sfx(sfx_select); screen = LIST; sel_list = 0;
                 }
-                else if (sel_home == 1) launch(win, ren, &music);
-                else if (sel_home == 2) launch(win, ren, &movies);
+                /* A section with scanned media opens a browse list; with
+                 * none, fall back to just launching the player. */
+                else if (sel_home == 1) {
+                    if (n_songs > 0) { sfx(sfx_select); screen = SLIST; sel_song = 0; }
+                    else launch(win, ren, &music);
+                }
+                else if (sel_home == 2) {
+                    if (n_movies > 0) { sfx(sfx_select); screen = MLIST; sel_mov = 0; }
+                    else launch(win, ren, &movies);
+                }
             }
-        } else {
+        } else if (screen == LIST) {
             if (nav_y < 0 && sel_list > 0) sel_list--;
             if (nav_y > 0 && sel_list < n_games - 1) sel_list++;
             if (back) { sfx(sfx_back); screen = HOME; }
             if (accept) launch(win, ren, &games[sel_list]);
+        } else if (screen == MLIST) {
+            if (nav_y < 0 && sel_mov > 0) sel_mov--;
+            if (nav_y > 0 && sel_mov < n_movies - 1) sel_mov++;
+            if (back) { sfx(sfx_back); screen = HOME; }
+            if (accept) launch(win, ren, &movie_items[sel_mov]);
+        } else { /* SLIST */
+            if (nav_y < 0 && sel_song > 0) sel_song--;
+            if (nav_y > 0 && sel_song < n_songs - 1) sel_song++;
+            if (back) { sfx(sfx_back); screen = HOME; }
+            if (accept) launch(win, ren, &song_items[sel_song]);
         }
 
-        SDL_Texture *t = (screen == HOME) ? tex_home[sel_home]
-                                          : tex_list[sel_list];
+        SDL_Texture *t = tex_home[sel_home];
+        if (screen == LIST)  t = tex_list[sel_list];
+        else if (screen == MLIST) t = tex_movie[sel_mov];
+        else if (screen == SLIST) t = tex_song[sel_song];
         if (t) SDL_RenderCopy(ren, t, NULL, NULL);
         SDL_RenderPresent(ren);
         SDL_Delay(33);   /* ~30fps is plenty for a menu; be kind to the Atom */

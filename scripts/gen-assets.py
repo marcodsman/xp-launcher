@@ -270,8 +270,8 @@ def rounded_mask(w, h, r):
     return m
 
 
-def hero_panel(img, game, x, y, w, h):
-    """Big featured-art panel for the selected game: art, bottom scrim,
+def hero_panel(img, game, x, y, w, h, tag="GAME"):
+    """Big featured-art panel for the selected item: art, bottom scrim,
     title, accent frame. Composited onto img at supersampled coords."""
     _, _, accent = game_colors(game["name"])
     r = 22 * SS
@@ -308,7 +308,7 @@ def hero_panel(img, game, x, y, w, h):
         ty += lh
     # a small accent tag above the title
     d.text((x + 36 * SS, y + h - 34 * SS - len(lines) * lh - 26 * SS),
-           "GAME", font=font(FONT_BOLD, 13), fill=accent)
+           tag, font=font(FONT_BOLD, 13), fill=accent)
     # accent frame
     d.rounded_rectangle((x, y, x + w - 1, y + h - 1), radius=r,
                         outline=accent, width=2 * SS)
@@ -333,7 +333,7 @@ def home_screens():
         save(img, f"home_{sel}")
 
 
-def list_screens(games, section="GAMES", prefix="list"):
+def list_screens(games, section="GAMES", prefix="list", tag="GAME"):
     """Two-column dashboard: scrolling list on the left, big featured cover
     of the selected item on the right. One BMP per selection (no engine
     change). The list window scrolls to keep the selection visible."""
@@ -382,7 +382,7 @@ def list_screens(games, section="GAMES", prefix="list"):
                    font=font(FONT_BOLD if row == sel else FONT_REG, 17),
                    fill=FG if row == sel else DIM, anchor="lm")
 
-        hero_panel(img, games[sel], hx, hy, hw, hh)
+        hero_panel(img, games[sel], hx, hy, hw, hh, tag=tag)
         hints(d, [("↑ ↓", "Select"), ("ENTER", "Play"), ("ESC", "Back")])
         save(img, f"{prefix}_{sel}")
 
@@ -396,24 +396,63 @@ def launch_screen():
     save(img, "launch")
 
 
-def games_cfg(cfg):
-    """Emit the file the C side parses: key|exe|args|cwd (cwd defaults to exe dir)."""
+# --------------------------------------------------------------------------
+# Media (movies/music). Scanned from the XP share at gen time (we're on the
+# laptop with it mounted); paths are rewritten to the box's C:\ view. Each
+# item becomes a launch of the section player with the file as its argument.
+MEDIA_LOCAL = "/media/Acer_Notebook/media"
+MEDIA_BOX = "C:\\XP_Share\\media"
+VIDEO_EXT = {".mp4", ".avi", ".mkv", ".wmv", ".mpg", ".mpeg", ".mov", ".m4v"}
+AUDIO_EXT = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".wma"}
+
+
+def scan_media(sub, exts):
+    d = os.path.join(MEDIA_LOCAL, sub)
+    if not os.path.isdir(d):
+        return []
+    out = []
+    for f in sorted(os.listdir(d)):
+        stem, ext = os.path.splitext(f)
+        if ext.lower() in exts:
+            out.append({"name": stem, "box": f"{MEDIA_BOX}\\{sub}\\{f}"})
+    return out
+
+
+def games_cfg(cfg, movies, songs):
+    """Emit the file the C side parses: key|exe|args|cwd.
+    Games launch directly; movie/song lines launch the section player with
+    the media file (quoted) as the argument."""
     def cwd_of(e):
         return e.get("cwd") or e["exe"].rsplit("\\", 1)[0]
     lines = []
+    # home-tile default players (fallback if a section has no scanned media)
     lines.append(f"music|{cfg['music']['exe']}|{cfg['music'].get('args', '')}|{cwd_of(cfg['music'])}")
     lines.append(f"movies|{cfg['movies']['exe']}|{cfg['movies'].get('args', '')}|{cwd_of(cfg['movies'])}")
     for g in cfg["games"]:
         lines.append(f"game|{g['exe']}|{g.get('args', '')}|{cwd_of(g)}")
+    mplayer, mcwd = cfg["movies"]["exe"], cwd_of(cfg["movies"])
+    for m in movies:
+        lines.append(f'movie|{mplayer}|"{m["box"]}"|{mcwd}')
+    splayer, scwd = cfg["music"]["exe"], cwd_of(cfg["music"])
+    for s in songs:
+        lines.append(f'song|{splayer}|"{s["box"]}"|{scwd}')
     with open("assets/games.cfg", "w", newline="\r\n") as f:
         f.write("\n".join(lines) + "\n")
-    print(f"assets/games.cfg ({len(cfg['games'])} games)")
+    print(f"assets/games.cfg ({len(cfg['games'])} games, "
+          f"{len(movies)} movies, {len(songs)} songs)")
 
 
 with open("games.json") as f:
     config = json.load(f)
 
+movies = scan_media("movies", VIDEO_EXT)
+songs = scan_media("music", AUDIO_EXT)
+
 home_screens()
 list_screens(config["games"])
+if movies:
+    list_screens(movies, section="MOVIES", prefix="movie", tag="MOVIE")
+if songs:
+    list_screens(songs, section="MUSIC", prefix="song", tag="SONG")
 launch_screen()
-games_cfg(config)
+games_cfg(config, movies, songs)
