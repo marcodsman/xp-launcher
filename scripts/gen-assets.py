@@ -13,9 +13,13 @@ Outputs:
   assets/launch.bmp           "starting..." interstitial shown while a game boots
   assets/games.cfg            index|exe|args|cwd lines the C side parses
 """
+import colorsys
+import hashlib
 import json
 import os
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+import re
+import textwrap
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 W, H = 1024, 768
 SS = 2                       # supersampling factor
@@ -211,6 +215,105 @@ def draw_card(img, i, hot):
            fill=FG if hot else DIM, anchor="mm")
 
 
+# --------------------------------------------------------------------------
+# Cover art. Real box art lives in covers/<slug>.{jpg,png} (drop one in to
+# override); when absent we draw a clean procedural card so every game still
+# looks intentional. Either way the hero panel crops-to-fill and overlays a
+# scrim + the title, so the two paths look consistent.
+COVERS_DIR = "covers"
+
+
+def slug_of(name):
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+
+
+def game_colors(name):
+    """Deterministic per-game hue → (top, bottom, accent) RGB tuples."""
+    hue = (int(hashlib.md5(name.encode()).hexdigest(), 16) % 360) / 360.0
+
+    def rgb(h, s, v):
+        return tuple(round(c * 255) for c in colorsys.hsv_to_rgb(h, s, v))
+    return rgb(hue, 0.45, 0.40), rgb(hue, 0.62, 0.12), rgb(hue, 0.55, 0.90)
+
+
+def procedural_cover(name, w, h):
+    """Gradient card + big faint monogram — the no-real-art fallback."""
+    top, bot, accent = game_colors(name)
+    card = Image.new("RGB", (1, h))
+    for y in range(h):
+        t = y / (h - 1)
+        card.putpixel((0, y), tuple(round(a + (b - a) * t)
+                                    for a, b in zip(top, bot)))
+    card = card.resize((w, h))
+    d = ImageDraw.Draw(card)
+    mono = name[0].upper()
+    f = font(FONT_BOLD, 150)
+    d.text((w // 2, h // 2 - 20 * SS), mono, font=f,
+           fill=tuple(min(255, c + 30) for c in accent), anchor="mm")
+    return card
+
+
+def cover_image(game, w, h):
+    """Real art (cropped-to-fill) if present, else a procedural card."""
+    slug = game.get("slug") or slug_of(game["name"])
+    for ext in ("jpg", "jpeg", "png"):
+        p = os.path.join(COVERS_DIR, f"{slug}.{ext}")
+        if os.path.exists(p):
+            im = Image.open(p).convert("RGB")
+            return ImageOps.fit(im, (w, h), Image.LANCZOS)
+    return procedural_cover(game["name"], w, h)
+
+
+def rounded_mask(w, h, r):
+    m = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(m).rounded_rectangle((0, 0, w - 1, h - 1), radius=r, fill=255)
+    return m
+
+
+def hero_panel(img, game, x, y, w, h):
+    """Big featured-art panel for the selected game: art, bottom scrim,
+    title, accent frame. Composited onto img at supersampled coords."""
+    _, _, accent = game_colors(game["name"])
+    r = 22 * SS
+
+    # drop shadow
+    shadow = Image.new("L", img.size, 0)
+    ImageDraw.Draw(shadow).rounded_rectangle(
+        (x + 6 * SS, y + 12 * SS, x + w + 6 * SS, y + h + 14 * SS),
+        radius=r, fill=130)
+    img.paste(Image.new("RGB", img.size, (0, 0, 0)), (0, 0),
+              shadow.filter(ImageFilter.GaussianBlur(12 * SS)))
+
+    art = cover_image(game, w, h)
+    mask = rounded_mask(w, h, r)
+
+    # bottom scrim so the title reads over any art
+    scrim = Image.new("L", (w, h), 0)
+    sd = ImageDraw.Draw(scrim)
+    for yy in range(h):
+        t = (yy / (h - 1) - 0.45) / 0.55
+        sd.line((0, yy, w, yy), fill=max(0, min(230, int(230 * t))))
+    art.paste(Image.new("RGB", (w, h), (0, 0, 0)), (0, 0), scrim)
+
+    img.paste(art, (x, y), mask)
+
+    d = ImageDraw.Draw(img)
+    # title, wrapped, sitting on the scrim near the bottom
+    tf = font(FONT_BOLD, 30)
+    lines = textwrap.wrap(game["name"], width=15) or [game["name"]]
+    lh = (tf.getbbox("Ag")[3] - tf.getbbox("Ag")[1]) + 6 * SS
+    ty = y + h - 34 * SS - len(lines) * lh
+    for ln in lines:
+        d.text((x + 34 * SS, ty), ln, font=tf, fill=FG)
+        ty += lh
+    # a small accent tag above the title
+    d.text((x + 36 * SS, y + h - 34 * SS - len(lines) * lh - 26 * SS),
+           "GAME", font=font(FONT_BOLD, 13), fill=accent)
+    # accent frame
+    d.rounded_rectangle((x, y, x + w - 1, y + h - 1), radius=r,
+                        outline=accent, width=2 * SS)
+
+
 def save(img, name):
     img.resize((W, H), Image.LANCZOS).save(f"assets/{name}.bmp")
     print(f"assets/{name}.bmp")
@@ -230,34 +333,58 @@ def home_screens():
         save(img, f"home_{sel}")
 
 
-def list_screens(games):
+def list_screens(games, section="GAMES", prefix="list"):
+    """Two-column dashboard: scrolling list on the left, big featured cover
+    of the selected item on the right. One BMP per selection (no engine
+    change). The list window scrolls to keep the selection visible."""
     n = len(games)
-    avail = (SH - 40 * SS - 30 * SS) - 196 * SS   # keep clear of the hint bar
-    row_h = min(46 * SS, avail // max(n, 1))
-    list_w = 620 * SS
-    x0 = (SW - list_w) // 2
-    y0 = 196 * SS
+    if n == 0:
+        return
+    # left list column
+    x0 = 60 * SS
+    list_w = 430 * SS
+    row_h = 44 * SS
+    top_y = 214 * SS
+    bot_y = SH - 78 * SS               # clear of the hint bar
+    visible = max(1, (bot_y - top_y) // row_h)
+    # right hero panel (mirror the list column width for a balanced split)
+    hx = x0 + list_w + 44 * SS
+    hy = 196 * SS
+    hw = SW - hx - 60 * SS
+    hh = bot_y - hy
+
     for sel in range(n):
         img = background()
         d = ImageDraw.Draw(img)
         header(d)
-        d.text((x0, 158 * SS), "GAMES", font=font(FONT_BOLD, 20),
+        _, _, accent = game_colors(games[sel]["name"])
+
+        d.text((x0, 158 * SS), section, font=font(FONT_BOLD, 20),
                fill=FG, anchor="lm")
-        d.rectangle((x0, 176 * SS, x0 + 56 * SS, 179 * SS), fill=ACCENT)
-        for i, g in enumerate(games):
-            y = y0 + i * row_h
-            if i == sel:
+        d.rectangle((x0, 176 * SS, x0 + 56 * SS, 179 * SS), fill=accent)
+        d.text((x0 + list_w, 162 * SS), f"{sel + 1}/{n}",
+               font=font(FONT_REG, 14), fill=DIM, anchor="rm")
+
+        # scroll so the selection stays in view
+        first = 0
+        if n > visible:
+            first = min(max(0, sel - visible // 2), n - visible)
+        for row in range(first, min(n, first + visible)):
+            g = games[row]
+            y = top_y + (row - first) * row_h
+            if row == sel:
                 d.rounded_rectangle(
                     (x0 - 18 * SS, y, x0 + list_w + 18 * SS, y + row_h - 8 * SS),
-                    radius=8 * SS, fill=(36, 62, 96))
+                    radius=8 * SS, fill=tuple(c * 40 // 100 for c in accent))
                 d.rectangle((x0 - 18 * SS, y, x0 - 12 * SS, y + row_h - 8 * SS),
-                            fill=ACCENT)
+                            fill=accent)
             d.text((x0, y + (row_h - 8 * SS) // 2), g["name"],
-                   font=font(FONT_BOLD if i == sel else FONT_REG, 17),
-                   fill=FG if i == sel else DIM, anchor="lm")
-        hints(d, [("↑ ↓", "Select"), ("ENTER", "Play"),
-                  ("ESC", "Back")])
-        save(img, f"list_{sel}")
+                   font=font(FONT_BOLD if row == sel else FONT_REG, 17),
+                   fill=FG if row == sel else DIM, anchor="lm")
+
+        hero_panel(img, games[sel], hx, hy, hw, hh)
+        hints(d, [("↑ ↓", "Select"), ("ENTER", "Play"), ("ESC", "Back")])
+        save(img, f"{prefix}_{sel}")
 
 
 def launch_screen():

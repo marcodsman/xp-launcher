@@ -74,11 +74,40 @@ composites anything. Adding a game = edit `games.json`, `make deploy`.
 
 ## Pending games
 
-- **SuperTux** — a modern build (worlds, powerups, editor) is in progress at
-  `../supertux-xp`, cross-compiled for XP with the SDL/D3D9 renderer (OpenGL is dead on
-  the GMA500). **TODO:** once `supertux2.exe` builds and runs on the box, add a `games.json`
-  entry for it and `make deploy`. The old featherweight SuperTux 0.1.3 is already installed
-  at `C:\supertux` as a fallback that runs today.
+- ✅ **SuperTux** — DONE. Modern build (worlds, powerups, editor) cross-compiled for XP at
+  `../supertux-xp` with the SDL/D3D9 renderer; runs fullscreen (~176 FPS menu), single-player
+  patched, in the launcher. (Old 0.1.3 still at `C:\supertux` as a fallback.)
+
+### Couch-game candidates to try next (curated 2026-07-05)
+
+Selection rule for this box (Atom Z520 + GMA500, proven): **SDL2 `SDL_Renderer`→D3D9 or
+DirectDraw 2D flies; raw OpenGL is dead (~2 FPS software); heavy 3D is out (Minetest ~9-13 FPS).**
+Prefer native gamepad support.
+
+**Tier A — likely drop-in (prebuilt XP binary, like SuperTux 0.1.3):**
+- **OpenBOR** ⭐ — beat-'em-up engine + huge free game library, **local co-op**, XP-native,
+  gamepad-perfect. Best content-per-effort; do this one next.
+- **Cave Story (NXEngine-evo)** ⭐ — beloved platformer, pad-native, **freeware data bundled**,
+  runs on a potato.
+- **OpenTyrian** — vertical shmup, tiny, pad-perfect, near-certain drop-in.
+- **Abuse** — run-'n-gun, SDL, old XP builds.
+- **Secret Maryo Chronicles** (old SDL 1.2 SMC — *not* the new SFML/OpenGL TSC) — Mario clone.
+
+**Tier B — worth a SuperTux-style cross-compile (SDL2→D3D9, process now proven):**
+- **DevilutionX (Diablo 1)** ⭐ — SDL2, superb controller support (built for handhelds),
+  lightweight. Needs Diablo data (shareware `spawn.mpq` works). A deep couch RPG.
+- **The Legend of Edgar** — SDL2 metroidvania, pad, low-spec (Parallel Realities).
+- **Blob Wars: Attrition** — SDL2 run-'n-gun, pad, light (same author).
+- **Hurrican** — Turrican-like run-'n-gun, SDL, pad-great.
+- **Commander Genius** — SDL2 Keen platformer, pad, light.
+
+**Don't bother (wrong fit):** heavy 3D (SuperTuxKart, Xonotic, Minetest, any Godot/Unity);
+raw-OpenGL-only (most Kenta Cho shmups, OpenClonk, Chromium B.S.U.); mouse-driven (OpenRA,
+OpenTTD, OpenRCT2, CorsixTH — great games, wrong input for a pad).
+
+**Top 3 to pursue:** OpenBOR (co-op, drop-in) → Cave Story (solo platformer) → DevilutionX
+(the one cross-compile worth doing). Each slots in the same way: build/grab → drop on share →
+`games.json` entry → `make deploy`.
 
 ## Roadmap
 
