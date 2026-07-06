@@ -14,9 +14,10 @@ share, screenshots): `~/projects/personal/maintenance/windows-xp-pc.md`.
   vendored in `vendor/SDL2` — the last SDL major that still targets XP).
 - **Software renderer** on a fullscreen-desktop window: driver-safe on the cursed
   Poulsbo GPU, and visible to GDI capture so `xpshot` screenshots work.
-- Text is pre-rendered on Linux (`scripts/gen-assets.py`, Pillow) into color-keyed
-  BMPs — no font library on the XP side. **No antialiasing** in labels: AA edges
-  blend toward the magenta key color and leave a pink fringe.
+- Every screen is pre-rendered on Linux (`scripts/gen-assets.py`, Pillow) into full
+  1024×768 BMPs at 2× (free supersampled AA) — no font/compositing on the XP side.
+- **Audio** via SDL2_mixer (`vendor/SDL2`, XP-clean): UI blips + an ambient bed
+  (`scripts/gen-sounds.py`) and a native in-launcher **music player** (see below).
 - Deploy = copy over the SMB share; run/kill/verify remotely via `xprun`/`xpshot`.
 
 ## Workflow
@@ -28,22 +29,42 @@ make run        # start it on the TV + screenshot to /tmp/launcher-shot.png
 make kill       # stop it
 ```
 
-## Controls (v1)
+## Controls
 
 | Input | Action |
 |-------|--------|
-| ← / → / ↑ / ↓ (or d-pad / left stick) | move selection |
-| Enter / Space (or pad button A) | open section / launch game |
-| Esc (or pad button B) | back / quit to desktop |
+| ← / → / ↑ / ↓ (d-pad / left stick) | move selection |
+| Enter / Space (pad A) | open section / launch game / play song / play-pause |
+| Esc (pad B) | back / quit to desktop |
+| SELECT (pad Back) | summon the launcher back over a running game |
 
-Games/Music/Movies come from `games.json` (laptop side) → `assets/games.cfg`
-(box side). The launcher minimizes while a game runs and takes the screen
-back when it exits (verified with Quake 2).
+## Sections & screens
+
+- **Games** — a scrolling cover-art list; a big featured hero panel updates per
+  selection. Launching a game minimizes the launcher and reclaims the screen on
+  exit; SELECT summons it back over a running game.
+- **Movies** — browse video files scanned from `C:\XP_Share\media\movies`; selecting
+  one hands off to MPC-HC (video wants the whole screen).
+- **Music** — browse tracks from `C:\XP_Share\media\music`, then a native **Now
+  Playing** screen: album art, title, a live progress bar, ENTER = play/pause,
+  ◀ ▶ = prev/next, ESC = back. Playback is **in-process** (SDL2_mixer), so it keeps
+  going while you browse elsewhere; tracks auto-advance and wrap. Formats:
+  **WAV / OGG / FLAC / Opus** work with the bundled DLL. **MP3** needs a 32-bit
+  `libmpg123-0.dll` dropped next to the exe (SDL2_mixer loads it dynamically) —
+  or convert the library to OGG/FLAC.
+- **Attract mode** — after 45 s idle the box cycles the library as full-bleed art
+  frames with PRESS START; any input wakes it (and is consumed, so it doesn't also
+  navigate). Music keeps playing underneath.
+
+Content comes from `games.json` + the `media/` folders (laptop side) →
+`assets/games.cfg` (box side). Add a game = edit `games.json`, `make deploy`.
+Real box art is a drop-in: put `covers/<slug>.{jpg,png}` and regenerate; otherwise
+a designed procedural cover is used.
 
 ## Remote control (for Claude / scripting)
 
 The launcher polls `ctl.txt` next to its exe ~5×/s and executes one command:
-`left right up down enter back quit`. Drop it over the share:
+`left right up down enter back show quit`. Drop it over the share:
 
 ```bash
 echo enter > /media/Acer_Notebook/launcher/ctl.txt
@@ -51,7 +72,11 @@ echo enter > /media/Acer_Notebook/launcher/ctl.txt
 
 This exists because nircmd's synthetic Enter/Esc/Space reach SDL with a null
 scancode and get dropped (arrows survive) — and it doubles as the automation
-hook (the laptop can drive the whole UI).
+hook (the laptop can drive the whole UI). ctl input is **exempt from the
+foreground gate** (it's trusted/local) and is consumed by truncating the file
+to empty, *not* deleting it — delete+recreate churns the SMB directory-entry
+cache and the box intermittently drops commands. Still, back-to-back commands
+want ~2–3 s between them over the share.
 
 ## Starting it on the box
 
@@ -69,8 +94,15 @@ menu) → it's pinned right there, or click its taskbar button.
 
 Every screen state is a full 1024x768 BMP pre-rendered by `gen-assets.py`
 at 2x and LANCZOS-downscaled (free supersampled AA): gradients, glow, drawn
-icons, type. The box blits exactly one texture per frame — the Atom never
-composites anything. Adding a game = edit `games.json`, `make deploy`.
+icons, type, covers. The box blits exactly one texture per frame — the Atom
+never composites anything. The only *live* drawing is the Now-Playing progress
+bar (SDL primitives over the BMP). Rendering uses `SDL_RenderSetLogicalSize(1024,
+768)` so BMPs and overlays stay aligned at any TV resolution.
+
+Asset scripts: `gen-assets.py` (screens + `games.cfg`), `gen-sounds.py` (UI
+blips + ambient), `gen-music.py` (royalty-free sample tracks), `gen-icon.py`
+(exe icon). `make` runs the first two; `make deploy` ships exe + SDL2 +
+SDL2_mixer DLLs + `assets/` (BMPs, `games.cfg`, `snd/`).
 
 ## Pending games
 
@@ -111,8 +143,12 @@ OpenTTD, OpenRCT2, CorsixTH — great games, wrong input for a pad).
 
 ## Roadmap
 
-- v2: cover art on the list screen (rendered on the laptop, shipped in the
-  state BMPs), attract mode on idle, "CONTINUE?" last-played row.
-- v3: boot-chain "cosplay" (shell replacement + fake console boot video) —
-  prerequisite: convert freeSSHd/VNC to real services first (see ideas doc,
-  safety notes).
+- ✅ **v2 (done)**: cover-art dashboard, UI sound + ambient bed, native music player
+  with Now-Playing + live progress bar, real Movies/Music sections, attract mode,
+  designed procedural covers, resolution-independent rendering.
+- **Next / nice-to-have**: "CONTINUE?" last-played row; MP3 codec DLL; real box art
+  drop-ins; a batch **joy2key** mapper so keyboard-only games (Jazz2, Abe, Heart of
+  Darkness) take the pad (see `GAME-AUDIT.md`); music shuffle/queue.
+- **v3**: boot-chain "cosplay" (shell replacement + fake console boot video) —
+  prerequisite: convert freeSSHd/VNC to real services first so a bad shell swap
+  can't lock us out (see ideas doc, safety notes).
