@@ -4,7 +4,7 @@
 CC      = i686-w64-mingw32-gcc
 SDL     = vendor/SDL2
 CFLAGS  = -O2 -Wall -Wextra -I$(SDL)/include/SDL2 -Dmain=SDL_main
-LDFLAGS = -L$(SDL)/lib -lmingw32 -lSDL2main -lSDL2 -mwindows -static-libgcc
+LDFLAGS = -L$(SDL)/lib -lmingw32 -lSDL2main -lSDL2 -lSDL2_mixer -mwindows -static-libgcc
 
 BUILD   = build
 DEPLOY  = /media/Acer_Notebook/launcher
@@ -21,14 +21,16 @@ $(BUILD)/icon.o: src/launcher.rc src/launcher.ico
 
 assets:
 	python3 scripts/gen-assets.py
+	python3 scripts/gen-sounds.py
 
 # Copy exe + SDL2.dll + assets onto the XP box via the SMB share.
 # Kills a running instance first: XP holds the exe/dll locked while running.
 deploy: all kill
-	mkdir -p $(DEPLOY)/assets
-	cp $(BUILD)/launcher.exe $(SDL)/bin/SDL2.dll $(DEPLOY)/
-	rm -f $(DEPLOY)/assets/*
+	mkdir -p $(DEPLOY)/assets/snd
+	cp $(BUILD)/launcher.exe $(SDL)/bin/SDL2.dll $(SDL)/bin/SDL2_mixer.dll $(DEPLOY)/
+	rm -f $(DEPLOY)/assets/*.bmp $(DEPLOY)/assets/games.cfg
 	cp assets/*.bmp assets/games.cfg $(DEPLOY)/assets/
+	cp assets/snd/*.wav $(DEPLOY)/assets/snd/
 
 # Launch on the box (lands on the TV) and grab a screenshot to verify.
 run:

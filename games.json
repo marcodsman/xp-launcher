@@ -23,8 +23,6 @@
       "exe": "C:\\GOG Games\\Jazz Jackrabbit 2\\Jazz2.exe" },
     { "name": "Abe's Oddysee",
       "exe": "C:\\GOG Games\\Abe's Oddysee\\AbeWin.exe" },
-    { "name": "Metal Slug 4",
-      "exe": "C:\\GOG Games\\METAL SLUG 4\\NeoGeo.exe" },
     { "name": "Mortal Kombat",
       "exe": "C:\\GOG Games\\Mortal Kombat\\DOSBOX\\DOSBox.exe",
       "args": "-conf \"..\\dosboxMortalKombat.conf\" -conf \"..\\dosboxMortalKombat_single.conf\" -noconsole -c exit",

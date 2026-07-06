@@ -16,6 +16,7 @@
  */
 #include <SDL.h>
 #include <SDL_syswm.h>
+#include <SDL_mixer.h>
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
@@ -207,6 +208,27 @@ static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
     else if (strcmp(cmd, "show") == 0)  *show = 1;
 }
 
+/* UI sound. Subtle blips + a quiet ambient bed (see scripts/gen-sounds.py).
+ * audio_ok stays 0 if the box has no working audio device — everything
+ * degrades to silent, never fatal. */
+static int audio_ok;
+static Mix_Chunk *sfx_move, *sfx_select, *sfx_back, *sfx_launch;
+static Mix_Music *bgm;
+
+static void sfx(Mix_Chunk *c)
+{
+    if (audio_ok && c) Mix_PlayChannel(-1, c, 0);
+}
+
+static Mix_Chunk *load_sfx(const char *dir, const char *name)
+{
+    char path[600];
+    SDL_snprintf(path, sizeof path, "%s\\assets\\snd\\%s", dir, name);
+    Mix_Chunk *c = Mix_LoadWAV(path);
+    if (!c) SDL_Log("load_sfx %s: %s", path, Mix_GetError());
+    return c;
+}
+
 /* The running child (game/player), if any. The launcher does NOT block on
  * it: the main loop keeps pumping (minimized) so SELECT can summon us back,
  * and reap_child() notices the exit. One child at a time. */
@@ -217,6 +239,7 @@ static void launch(SDL_Window *win, SDL_Renderer *ren, const Entry *e)
 {
     if (!e->exe[0] || child) return;
 
+    sfx(sfx_launch);
     if (tex_launch) {               /* "STARTING…" while the child boots */
         SDL_RenderCopy(ren, tex_launch, NULL, NULL);
         SDL_RenderPresent(ren);
@@ -242,6 +265,7 @@ static void launch(SDL_Window *win, SDL_Renderer *ren, const Entry *e)
     CloseHandle(pi.hThread);
     child = pi.hProcess;
     SDL_Log("launched: %s", cmd);
+    if (audio_ok) Mix_PauseMusic();   /* hush the bed while a game runs */
     SDL_MinimizeWindow(win);
 }
 
@@ -261,6 +285,7 @@ static void reap_child(SDL_Window *win)
     CloseHandle(child);
     child = NULL;
     SDL_Log("child exited; reclaiming screen");
+    if (audio_ok) Mix_ResumeMusic();
     summon(win);
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);  /* drop input queued while away */
 }
@@ -286,7 +311,7 @@ int main(int argc, char *argv[])
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK |
-                 SDL_INIT_GAMECONTROLLER) != 0) {
+                 SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) != 0) {
         SDL_Log("SDL_Init: %s", SDL_GetError());
         return 1;
     }
@@ -342,6 +367,24 @@ int main(int argc, char *argv[])
         tex_list[i] = load_bmp(ren, dir, name);
     }
     tex_launch = load_bmp(ren, dir, "launch.bmp");
+
+    /* Audio: never fatal — if the device won't open, run silent. */
+    if (Mix_OpenAudio(22050, AUDIO_S16SYS, 2, 1024) == 0) {
+        audio_ok = 1;
+        sfx_move   = load_sfx(dir, "move.wav");
+        sfx_select = load_sfx(dir, "select.wav");
+        sfx_back   = load_sfx(dir, "back.wav");
+        sfx_launch = load_sfx(dir, "launch.wav");
+        char mpath[600];
+        SDL_snprintf(mpath, sizeof mpath, "%s\\assets\\snd\\ambient.wav", dir);
+        bgm = Mix_LoadMUS(mpath);
+        if (bgm) {
+            Mix_VolumeMusic(MIX_MAX_VOLUME * 40 / 100);   /* soft bed */
+            Mix_PlayMusic(bgm, -1);
+        }
+    } else {
+        SDL_Log("Mix_OpenAudio: %s (running silent)", Mix_GetError());
+    }
 
     enum { HOME, LIST } screen = HOME;
     int sel_home = 0, sel_list = 0;
@@ -457,19 +500,23 @@ int main(int argc, char *argv[])
         if (GetForegroundWindow() != our_hwnd)
             nav_x = nav_y = accept = back = 0;
 
+        if (nav_x || nav_y) sfx(sfx_move);
+
         if (screen == HOME) {
             if (nav_x < 0 && sel_home > 0) sel_home--;
             if (nav_x > 0 && sel_home < 2) sel_home++;
             if (back) running = 0;
             if (accept) {
-                if (sel_home == 0 && n_games > 0) { screen = LIST; sel_list = 0; }
+                if (sel_home == 0 && n_games > 0) {
+                    sfx(sfx_select); screen = LIST; sel_list = 0;
+                }
                 else if (sel_home == 1) launch(win, ren, &music);
                 else if (sel_home == 2) launch(win, ren, &movies);
             }
         } else {
             if (nav_y < 0 && sel_list > 0) sel_list--;
             if (nav_y > 0 && sel_list < n_games - 1) sel_list++;
-            if (back) screen = HOME;
+            if (back) { sfx(sfx_back); screen = HOME; }
             if (accept) launch(win, ren, &games[sel_list]);
         }
 
@@ -482,6 +529,12 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < n_pads; i++) SDL_GameControllerClose(pads[i]);
     for (int i = 0; i < n_raw; i++) SDL_JoystickClose(raw_joys[i]);
+    if (audio_ok) {
+        if (bgm) Mix_FreeMusic(bgm);
+        Mix_FreeChunk(sfx_move); Mix_FreeChunk(sfx_select);
+        Mix_FreeChunk(sfx_back); Mix_FreeChunk(sfx_launch);
+        Mix_CloseAudio();
+    }
     if (logf) fclose(logf);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
