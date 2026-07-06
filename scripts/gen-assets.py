@@ -439,6 +439,32 @@ def nowplaying_screens(songs):
         save(img, f"np_{sel}")
 
 
+def attract_screens(games):
+    """Arcade attract loop: one full-bleed art frame per game with a scrim,
+    title, and PRESS START. The C side cycles these while the box is idle.
+    prefix 'attract'."""
+    for i, g in enumerate(games):
+        _, _, accent = game_colors(g["name"])
+        img = cover_image(g, SW, SH)          # crop-to-fill the whole screen
+        # darken for legibility: global dim + stronger bottom scrim
+        img = Image.blend(img, Image.new("RGB", img.size, (6, 8, 16)), 0.35)
+        scrim = Image.new("L", (SW, SH), 0)
+        sd = ImageDraw.Draw(scrim)
+        for yy in range(SH):
+            t = (yy / (SH - 1) - 0.5) / 0.5
+            sd.line((0, yy, SW, yy), fill=max(0, min(200, int(200 * t))))
+        img.paste(Image.new("RGB", (SW, SH), (0, 0, 0)), (0, 0), scrim)
+
+        d = ImageDraw.Draw(img)
+        tracked_text(d, (SW // 2, 70 * SS), "PERFORMA ENTERTAINMENT SYSTEM",
+                     font(FONT_REG, 15), DIM, tracking=6 * SS, anchor="mm")
+        d.text((SW // 2, SH - 150 * SS), g["name"], font=font(FONT_BOLD, 40),
+               fill=FG, anchor="mm")
+        tracked_text(d, (SW // 2, SH - 90 * SS), "PRESS  START",
+                     font(FONT_BOLD, 22), accent, tracking=6 * SS, anchor="mm")
+        save(img, f"attract_{i}")
+
+
 def launch_screen():
     img = background()
     d = ImageDraw.Draw(img)
@@ -502,6 +528,7 @@ songs = scan_media("music", AUDIO_EXT)
 
 home_screens()
 list_screens(config["games"])
+attract_screens(config["games"])
 if movies:
     list_screens(movies, section="MOVIES", prefix="movie", tag="MOVIE")
 if songs:

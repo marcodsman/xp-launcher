@@ -23,6 +23,8 @@
 
 #define MAX_GAMES 64
 #define MAX_MEDIA 128
+#define ATTRACT_IDLE  45000    /* ms of no input before the attract loop */
+#define ATTRACT_CYCLE  6000    /* ms per attract frame */
 #define WIN_TITLE "Performa Entertainment System"
 
 typedef struct {
@@ -46,6 +48,7 @@ static SDL_Texture *tex_list[MAX_GAMES];
 static SDL_Texture *tex_movie[MAX_MEDIA];
 static SDL_Texture *tex_song[MAX_MEDIA];
 static SDL_Texture *tex_np[MAX_MEDIA];   /* now-playing, per song */
+static SDL_Texture *tex_attract[MAX_GAMES];  /* idle attract loop, per game */
 static SDL_Texture *tex_launch;
 
 /* All connected pads. The dual PS2-style adapter is TWO joystick devices on
@@ -455,6 +458,8 @@ int main(int argc, char *argv[])
     for (int i = 0; i < n_games; i++) {
         SDL_snprintf(name, sizeof name, "list_%d.bmp", i);
         tex_list[i] = load_bmp(ren, dir, name);
+        SDL_snprintf(name, sizeof name, "attract_%d.bmp", i);
+        tex_attract[i] = load_bmp(ren, dir, name);
     }
     for (int i = 0; i < n_movies; i++) {
         SDL_snprintf(name, sizeof name, "movie_%d.bmp", i);
@@ -489,6 +494,9 @@ int main(int argc, char *argv[])
     enum { HOME, LIST, MLIST, SLIST, NOWPLAYING } screen = HOME;
     int sel_home = 0, sel_list = 0, sel_mov = 0, sel_song = 0;
     int running = 1, axis_latch = 0;
+    Uint32 last_input = SDL_GetTicks();    /* attract-mode idle timer */
+    int attract = 0, attract_idx = 0;
+    Uint32 attract_cycle_at = 0;
 
     int ctl_tick = 0;
     while (running) {
@@ -611,6 +619,26 @@ int main(int argc, char *argv[])
         accept |= cacc;
         back |= cbk;
 
+        /* Attract mode: after a while idle, cycle the library as an arcade
+         * attract loop. The first input just wakes us (it doesn't also
+         * navigate); music, if any, keeps playing underneath. */
+        {
+            Uint32 now = SDL_GetTicks();
+            int any_input = nav_x || nav_y || accept || back || show;
+            if (any_input) last_input = now;
+            if (attract) {
+                if (any_input) {
+                    attract = 0;
+                    nav_x = nav_y = accept = back = 0;   /* consume the wake */
+                } else if (now - attract_cycle_at > ATTRACT_CYCLE && n_games) {
+                    attract_idx = (attract_idx + 1) % n_games;
+                    attract_cycle_at = now;
+                }
+            } else if (n_games > 0 && now - last_input > ATTRACT_IDLE) {
+                attract = 1; attract_idx = 0; attract_cycle_at = now;
+            }
+        }
+
         if (nav_x || nav_y) sfx(sfx_move);
 
         if (screen == HOME) {
@@ -669,11 +697,13 @@ int main(int argc, char *argv[])
         else if (screen == MLIST) t = tex_movie[sel_mov];
         else if (screen == SLIST) t = tex_song[sel_song];
         else if (screen == NOWPLAYING && cur_song >= 0) t = tex_np[cur_song];
+        if (attract && n_games > 0 && tex_attract[attract_idx])
+            t = tex_attract[attract_idx];
         if (t) SDL_RenderCopy(ren, t, NULL, NULL);
 
         /* Live progress bar over the Now-Playing screen. Coords match
          * PROG in gen-assets.py (logical 1024x768). */
-        if (screen == NOWPLAYING && cur_song >= 0 && track) {
+        if (!attract && screen == NOWPLAYING && cur_song >= 0 && track) {
             double dur = Mix_MusicDuration(track);
             double pos = song_pos();
             if (dur > 0) {
