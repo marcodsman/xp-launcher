@@ -242,7 +242,9 @@ def game_colors(name):
 
 
 def procedural_cover(name, w, h):
-    """Gradient card + big faint monogram — the no-real-art fallback."""
+    """Designed 'box art' fallback: hue gradient + diagonal sheen + a soft
+    spotlight behind a shadowed monogram + a corner accent. Reads as an
+    intentional cover, not a placeholder."""
     top, bot, accent = game_colors(name)
     card = Image.new("RGB", (1, h))
     for y in range(h):
@@ -250,11 +252,38 @@ def procedural_cover(name, w, h):
         card.putpixel((0, y), tuple(round(a + (b - a) * t)
                                     for a, b in zip(top, bot)))
     card = card.resize((w, h))
+
+    # diagonal sheen: a faint brighter band across the upper third
+    sheen = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(sheen).polygon(
+        [(0, int(h * 0.10)), (w, int(-h * 0.10)),
+         (w, int(h * 0.18)), (0, int(h * 0.38))], fill=42)
+    card.paste(Image.new("RGB", (w, h), (255, 255, 255)), (0, 0),
+               sheen.filter(ImageFilter.GaussianBlur(max(2, w // 40))))
+
+    # soft spotlight behind the monogram
+    spot = Image.new("L", (w, h), 0)
+    cx, cy, rr = w // 2, int(h * 0.44), int(w * 0.34)
+    ImageDraw.Draw(spot).ellipse((cx - rr, cy - rr, cx + rr, cy + rr),
+                                 fill=70)
+    card.paste(Image.new("RGB", (w, h),
+               tuple(min(255, c + 40) for c in accent)), (0, 0),
+               spot.filter(ImageFilter.GaussianBlur(max(4, w // 12))))
+
+    # corner accent wedge
     d = ImageDraw.Draw(card)
+    d.polygon([(0, 0), (int(w * 0.28), 0), (0, int(h * 0.20))], fill=accent)
+
+    # monogram with a soft drop shadow
     mono = name[0].upper()
-    f = font(FONT_BOLD, 150)
-    d.text((w // 2, h // 2 - 20 * SS), mono, font=f,
-           fill=tuple(min(255, c + 30) for c in accent), anchor="mm")
+    f = font(FONT_BOLD, int(150 * w / (236 * SS)) if w < 236 * SS else 150)
+    shadow = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(shadow).text((cx + 4, cy + 6), mono, font=f, fill=180,
+                                anchor="mm")
+    card.paste(Image.new("RGB", (w, h), (0, 0, 0)), (0, 0),
+               shadow.filter(ImageFilter.GaussianBlur(6)))
+    d.text((cx, cy), mono, font=f,
+           fill=tuple(min(255, c + 60) for c in accent), anchor="mm")
     return card
 
 
