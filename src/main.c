@@ -45,6 +45,7 @@ static SDL_Texture *tex_home[3];
 static SDL_Texture *tex_list[MAX_GAMES];
 static SDL_Texture *tex_movie[MAX_MEDIA];
 static SDL_Texture *tex_song[MAX_MEDIA];
+static SDL_Texture *tex_np[MAX_MEDIA];   /* now-playing, per song */
 static SDL_Texture *tex_launch;
 
 /* All connected pads. The dual PS2-style adapter is TWO joystick devices on
@@ -210,7 +211,13 @@ static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
     if (fgets(cmd, sizeof cmd, f))
         cmd[strcspn(cmd, "\r\n")] = '\0';
     fclose(f);
-    remove(path);
+    if (!cmd[0]) return;              /* already-consumed (empty) file */
+    /* Consume by truncating to empty rather than remove(): over the SMB
+     * share, delete+recreate churns the directory-entry cache and the box
+     * intermittently misses the next command. Keeping the file present and
+     * just emptying it is coherent. */
+    FILE *w = fopen(path, "w");
+    if (w) fclose(w);
     if      (strcmp(cmd, "left") == 0)  *nav_x = -1;
     else if (strcmp(cmd, "right") == 0) *nav_x = 1;
     else if (strcmp(cmd, "up") == 0)    *nav_y = -1;
@@ -226,7 +233,11 @@ static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
  * degrades to silent, never fatal. */
 static int audio_ok;
 static Mix_Chunk *sfx_move, *sfx_select, *sfx_back, *sfx_launch;
-static Mix_Music *bgm;
+static Mix_Music *bgm;                   /* ambient bed */
+static Mix_Music *track;                 /* the song currently playing */
+static int cur_song = -1;                /* index into song_items, -1 = none */
+static int mus_paused = 0;
+static Uint32 play_start, pause_at, game_pause_at;   /* progress bookkeeping */
 
 static void sfx(Mix_Chunk *c)
 {
@@ -240,6 +251,64 @@ static Mix_Chunk *load_sfx(const char *dir, const char *name)
     Mix_Chunk *c = Mix_LoadWAV(path);
     if (!c) SDL_Log("load_sfx %s: %s", path, Mix_GetError());
     return c;
+}
+
+/* song_items[i].args holds the file path, quoted (for the shell-out path we
+ * no longer use). Native playback wants the bare path. */
+static void unquote(char *dst, size_t n, const char *src)
+{
+    size_t len = strlen(src);
+    if (len >= 2 && src[0] == '"' && src[len - 1] == '"') {
+        size_t m = len - 2;
+        if (m >= n) m = n - 1;
+        memcpy(dst, src + 1, m);
+        dst[m] = '\0';
+    } else {
+        SDL_strlcpy(dst, src, n);
+    }
+}
+
+/* Play song `idx` in-process (replaces the ambient bed / previous track).
+ * The launcher keeps running, so playback continues while you browse. */
+static void play_song(int idx)
+{
+    if (!audio_ok || idx < 0 || idx >= n_songs) return;
+    char path[600];
+    unquote(path, sizeof path, song_items[idx].args);
+    Mix_HaltMusic();
+    if (track) { Mix_FreeMusic(track); track = NULL; }
+    track = Mix_LoadMUS(path);
+    if (!track) {
+        SDL_Log("play_song %s: %s", path, Mix_GetError());
+        cur_song = -1;
+        return;
+    }
+    Mix_VolumeMusic(MIX_MAX_VOLUME * 85 / 100);
+    Mix_PlayMusic(track, 1);            /* once; auto-advance handles the rest */
+    cur_song = idx;
+    mus_paused = 0;
+    play_start = SDL_GetTicks();
+}
+
+static void toggle_pause(void)
+{
+    if (!audio_ok || cur_song < 0) return;
+    if (mus_paused) {
+        play_start += SDL_GetTicks() - pause_at;   /* keep progress honest */
+        Mix_ResumeMusic();
+        mus_paused = 0;
+    } else {
+        pause_at = SDL_GetTicks();
+        Mix_PauseMusic();
+        mus_paused = 1;
+    }
+}
+
+/* Elapsed seconds into the current track (pause-aware, format-independent). */
+static double song_pos(void)
+{
+    Uint32 now = mus_paused ? pause_at : SDL_GetTicks();
+    return (now - play_start) / 1000.0;
 }
 
 /* The running child (game/player), if any. The launcher does NOT block on
@@ -278,7 +347,7 @@ static void launch(SDL_Window *win, SDL_Renderer *ren, const Entry *e)
     CloseHandle(pi.hThread);
     child = pi.hProcess;
     SDL_Log("launched: %s", cmd);
-    if (audio_ok) Mix_PauseMusic();   /* hush the bed while a game runs */
+    if (audio_ok) { game_pause_at = SDL_GetTicks(); Mix_PauseMusic(); }
     SDL_MinimizeWindow(win);
 }
 
@@ -298,7 +367,11 @@ static void reap_child(SDL_Window *win)
     CloseHandle(child);
     child = NULL;
     SDL_Log("child exited; reclaiming screen");
-    if (audio_ok) Mix_ResumeMusic();
+    if (audio_ok) {
+        if (cur_song >= 0 && !mus_paused)
+            play_start += SDL_GetTicks() - game_pause_at;   /* don't count game time */
+        Mix_ResumeMusic();
+    }
     summon(win);
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);  /* drop input queued while away */
 }
@@ -358,6 +431,10 @@ int main(int argc, char *argv[])
         SDL_Log("window/renderer: %s", SDL_GetError());
         return 1;
     }
+    /* Render in a fixed 1024x768 logical space, scaled to whatever the TV
+     * is at. Keeps the pre-rendered BMPs and the live overlays (progress
+     * bar) aligned regardless of the actual desktop resolution. */
+    SDL_RenderSetLogicalSize(ren, 1024, 768);
 
     /* Native handle for foreground checks (see the input gate below). */
     HWND our_hwnd = NULL;
@@ -386,6 +463,8 @@ int main(int argc, char *argv[])
     for (int i = 0; i < n_songs; i++) {
         SDL_snprintf(name, sizeof name, "song_%d.bmp", i);
         tex_song[i] = load_bmp(ren, dir, name);
+        SDL_snprintf(name, sizeof name, "np_%d.bmp", i);
+        tex_np[i] = load_bmp(ren, dir, name);
     }
     tex_launch = load_bmp(ren, dir, "launch.bmp");
 
@@ -407,7 +486,7 @@ int main(int argc, char *argv[])
         SDL_Log("Mix_OpenAudio: %s (running silent)", Mix_GetError());
     }
 
-    enum { HOME, LIST, MLIST, SLIST } screen = HOME;
+    enum { HOME, LIST, MLIST, SLIST, NOWPLAYING } screen = HOME;
     int sel_home = 0, sel_list = 0, sel_mov = 0, sel_song = 0;
     int running = 1, axis_latch = 0;
 
@@ -563,18 +642,53 @@ int main(int argc, char *argv[])
             if (nav_y > 0 && sel_mov < n_movies - 1) sel_mov++;
             if (back) { sfx(sfx_back); screen = HOME; }
             if (accept) launch(win, ren, &movie_items[sel_mov]);
-        } else { /* SLIST */
+        } else if (screen == SLIST) {
             if (nav_y < 0 && sel_song > 0) sel_song--;
             if (nav_y > 0 && sel_song < n_songs - 1) sel_song++;
             if (back) { sfx(sfx_back); screen = HOME; }
-            if (accept) launch(win, ren, &song_items[sel_song]);
+            if (accept) {           /* play in-process, go to Now Playing */
+                sfx(sfx_select);
+                play_song(sel_song);
+                screen = NOWPLAYING;
+            }
+        } else { /* NOWPLAYING */
+            if (nav_x < 0 || nav_y < 0)
+                play_song((cur_song - 1 + n_songs) % n_songs);
+            if (nav_x > 0 || nav_y > 0)
+                play_song((cur_song + 1) % n_songs);
+            if (accept) toggle_pause();
+            if (back) { sfx(sfx_back); screen = SLIST; }  /* music keeps going */
         }
+
+        /* Auto-advance: when a track finishes (not paused), play the next. */
+        if (audio_ok && cur_song >= 0 && !mus_paused && !Mix_PlayingMusic())
+            play_song((cur_song + 1) % n_songs);
 
         SDL_Texture *t = tex_home[sel_home];
         if (screen == LIST)  t = tex_list[sel_list];
         else if (screen == MLIST) t = tex_movie[sel_mov];
         else if (screen == SLIST) t = tex_song[sel_song];
+        else if (screen == NOWPLAYING && cur_song >= 0) t = tex_np[cur_song];
         if (t) SDL_RenderCopy(ren, t, NULL, NULL);
+
+        /* Live progress bar over the Now-Playing screen. Coords match
+         * PROG in gen-assets.py (logical 1024x768). */
+        if (screen == NOWPLAYING && cur_song >= 0 && track) {
+            double dur = Mix_MusicDuration(track);
+            double pos = song_pos();
+            if (dur > 0) {
+                double frac = pos / dur;
+                if (frac < 0) frac = 0;
+                if (frac > 1) frac = 1;
+                int w = (int)(724 * frac);
+                SDL_Rect fill = { 150, 636, w, 10 };
+                SDL_SetRenderDrawColor(ren, 86, 156, 214, 255);
+                SDL_RenderFillRect(ren, &fill);
+                SDL_Rect knob = { 150 + w - 3, 631, 6, 20 };
+                SDL_SetRenderDrawColor(ren, 235, 238, 245, 255);
+                SDL_RenderFillRect(ren, &knob);
+            }
+        }
         SDL_RenderPresent(ren);
         SDL_Delay(33);   /* ~30fps is plenty for a menu; be kind to the Atom */
     }
@@ -582,6 +696,8 @@ int main(int argc, char *argv[])
     for (int i = 0; i < n_pads; i++) SDL_GameControllerClose(pads[i]);
     for (int i = 0; i < n_raw; i++) SDL_JoystickClose(raw_joys[i]);
     if (audio_ok) {
+        Mix_HaltMusic();
+        if (track) Mix_FreeMusic(track);
         if (bgm) Mix_FreeMusic(bgm);
         Mix_FreeChunk(sfx_move); Mix_FreeChunk(sfx_select);
         Mix_FreeChunk(sfx_back); Mix_FreeChunk(sfx_launch);

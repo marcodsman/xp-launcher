@@ -36,6 +36,11 @@ FG = (235, 238, 245)
 DIM = (110, 118, 138)
 ACCENT = (86, 156, 214)
 
+# Now-Playing progress bar geometry, in LOGICAL 1024x768 space (the C side
+# renders with SDL_RenderSetLogicalSize(1024,768) and draws the live fill at
+# these exact coords over the pre-rendered track). Keep the two in sync.
+PROG = {"x": 150, "y": 636, "w": 724, "h": 10}
+
 SECTIONS = [
     ("GAMES",  (24, 130, 90),  (10, 52, 36)),
     ("MUSIC",  (142, 84, 168), (54, 30, 66)),
@@ -387,6 +392,53 @@ def list_screens(games, section="GAMES", prefix="list", tag="GAME"):
         save(img, f"{prefix}_{sel}")
 
 
+def nowplaying_screens(songs):
+    """One full-screen Now-Playing state per song: large album art, title,
+    NOW PLAYING tag, an empty progress-bar track (the C side fills it live),
+    and transport hints. prefix 'np'."""
+    n = len(songs)
+    for sel in range(n):
+        s = songs[sel]
+        img = background()
+        d = ImageDraw.Draw(img)
+        header(d)
+        _, _, accent = game_colors(s["name"])
+
+        # large album art, centered upper area
+        art_w = art_h = 300 * SS
+        ax = (SW - art_w) // 2
+        ay = 190 * SS
+        r = 20 * SS
+        shadow = Image.new("L", img.size, 0)
+        ImageDraw.Draw(shadow).rounded_rectangle(
+            (ax + 6 * SS, ay + 12 * SS, ax + art_w + 6 * SS, ay + art_h + 14 * SS),
+            radius=r, fill=140)
+        img.paste(Image.new("RGB", img.size, (0, 0, 0)), (0, 0),
+                  shadow.filter(ImageFilter.GaussianBlur(14 * SS)))
+        art = cover_image(s, art_w, art_h)
+        img.paste(art, (ax, ay), rounded_mask(art_w, art_h, r))
+        d = ImageDraw.Draw(img)
+        d.rounded_rectangle((ax, ay, ax + art_w - 1, ay + art_h - 1),
+                            radius=r, outline=accent, width=2 * SS)
+
+        # NOW PLAYING tag + title, centered under the art
+        ty = ay + art_h + 30 * SS
+        d.text((SW // 2, ty), "NOW PLAYING", font=font(FONT_BOLD, 13),
+               fill=accent, anchor="mm")
+        d.text((SW // 2, ty + 34 * SS), s["name"], font=font(FONT_BOLD, 26),
+               fill=FG, anchor="mm")
+
+        # empty progress-bar track (C fills the accent portion live)
+        px, py = PROG["x"] * SS, PROG["y"] * SS
+        pw, ph = PROG["w"] * SS, PROG["h"] * SS
+        d.rounded_rectangle((px, py, px + pw, py + ph), radius=ph // 2,
+                            fill=(48, 54, 72))
+
+        hints(d, [("◀ ▶", "Prev / Next"), ("ENTER", "Play / Pause"),
+                  ("ESC", "Back")])
+        save(img, f"np_{sel}")
+
+
 def launch_screen():
     img = background()
     d = ImageDraw.Draw(img)
@@ -454,5 +506,6 @@ if movies:
     list_screens(movies, section="MOVIES", prefix="movie", tag="MOVIE")
 if songs:
     list_screens(songs, section="MUSIC", prefix="song", tag="SONG")
+    nowplaying_screens(songs)
 launch_screen()
 games_cfg(config, movies, songs)
