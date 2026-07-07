@@ -19,6 +19,7 @@
 #include <SDL_mixer.h>
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MAX_GAMES 64
@@ -204,7 +205,8 @@ static void load_cfg(const char *dir)
  * keypresses reach SDL with a null scancode for Return/Escape/Space, so
  * remote testing can't use the keyboard path. Polled a few times a second. */
 static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
-                     int *accept, int *back, int *quit, int *show)
+                     int *accept, int *back, int *quit, int *show,
+                     int *shuf, int *rep, int *skl, int *skr)
 {
     char path[600];
     SDL_snprintf(path, sizeof path, "%s\\ctl.txt", dir);
@@ -229,6 +231,10 @@ static void poll_ctl(const char *dir, int *nav_x, int *nav_y,
     else if (strcmp(cmd, "back") == 0)  *back = 1;
     else if (strcmp(cmd, "quit") == 0)  *quit = 1;
     else if (strcmp(cmd, "show") == 0)  *show = 1;
+    else if (strcmp(cmd, "shuffle") == 0) *shuf = 1;
+    else if (strcmp(cmd, "repeat") == 0)  *rep = 1;
+    else if (strcmp(cmd, "seekl") == 0)   *skl = 1;
+    else if (strcmp(cmd, "seekr") == 0)   *skr = 1;
 }
 
 /* UI sound. Subtle blips + a quiet ambient bed (see scripts/gen-sounds.py).
@@ -240,7 +246,29 @@ static Mix_Music *bgm;                   /* ambient bed */
 static Mix_Music *track;                 /* the song currently playing */
 static int cur_song = -1;                /* index into song_items, -1 = none */
 static int mus_paused = 0;
+static int mus_shuffle = 0;              /* random next track */
+static int mus_repeat = 0;              /* 0 off, 1 all, 2 one */
+static int mus_vol = 70;                 /* 0-100 */
 static Uint32 play_start, pause_at, game_pause_at;   /* progress bookkeeping */
+
+/* Now-Playing layout, mirrored from scripts/gen-assets.py (logical 1024x768).
+ * The engine draws the live fills / glyphs at these coords over the
+ * pre-rendered screen. Keep in sync with gen-assets PROG/VOL/STATE/FBTN. */
+#define PROG_X 200
+#define PROG_Y 452
+#define PROG_W 624
+#define PROG_H 8
+#define VOL_X 470
+#define VOL_Y 489
+#define VOL_W 120
+#define VOL_H 8
+#define STATE_X 176
+#define STATE_Y 456
+#define FB_TRI_X 512   /* repeat  */
+#define FB_TRI_Y 556
+#define FB_SQR_X 464   /* shuffle */
+#define FB_SQR_Y 592
+#define FB_R 21
 
 static void sfx(Mix_Chunk *c)
 {
@@ -286,11 +314,44 @@ static void play_song(int idx)
         cur_song = -1;
         return;
     }
-    Mix_VolumeMusic(MIX_MAX_VOLUME * 85 / 100);
+    Mix_VolumeMusic(MIX_MAX_VOLUME * mus_vol / 100);
     Mix_PlayMusic(track, 1);            /* once; auto-advance handles the rest */
     cur_song = idx;
     mus_paused = 0;
     play_start = SDL_GetTicks();
+}
+
+static void change_vol(int delta)
+{
+    mus_vol += delta;
+    if (mus_vol < 0) mus_vol = 0;
+    if (mus_vol > 100) mus_vol = 100;
+    if (audio_ok) Mix_VolumeMusic(MIX_MAX_VOLUME * mus_vol / 100);
+}
+
+static double song_pos(void);  /* fwd */
+
+/* Jump within the current track (best effort — works for MP3/OGG/FLAC;
+ * WAV may not support it, in which case leave the estimate untouched). */
+static void do_seek(double delta)
+{
+    if (!audio_ok || cur_song < 0 || !track) return;
+    double p = song_pos() + delta;
+    if (p < 0) p = 0;
+    if (Mix_SetMusicPosition(p) == 0)          /* success -> match estimate */
+        play_start = SDL_GetTicks() - (Uint32)(p * 1000);
+}
+
+/* Choose the next track for auto-advance / Next, honoring shuffle + repeat. */
+static int next_track(void)
+{
+    if (n_songs <= 1) return cur_song;
+    if (mus_shuffle) {
+        int r;
+        do { r = rand() % n_songs; } while (r == cur_song);
+        return r;
+    }
+    return (cur_song + 1) % n_songs;
 }
 
 static void toggle_pause(void)
@@ -379,6 +440,18 @@ static void reap_child(SDL_Window *win)
     SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);  /* drop input queued while away */
 }
 
+/* Filled triangle in the current logical space (for the play glyph and the
+ * repeat indicator) — the software renderer has no triangle primitive. */
+static void fill_tri(SDL_Renderer *ren, float x1, float y1, float x2, float y2,
+                     float x3, float y3, Uint8 r, Uint8 g, Uint8 b)
+{
+    SDL_Color c = { r, g, b, 255 };
+    SDL_Vertex v[3] = { { { x1, y1 }, c, { 0, 0 } },
+                        { { x2, y2 }, c, { 0, 0 } },
+                        { { x3, y3 }, c, { 0, 0 } } };
+    SDL_RenderGeometry(ren, NULL, v, 3, NULL, 0);
+}
+
 int main(int argc, char *argv[])
 {
     (void)argc; (void)argv;
@@ -449,6 +522,7 @@ int main(int argc, char *argv[])
     }
 
     load_cfg(dir);
+    srand(SDL_GetTicks());              /* for shuffle */
 
     char name[64];
     for (int i = 0; i < 3; i++) {
@@ -501,16 +575,19 @@ int main(int argc, char *argv[])
     int ctl_tick = 0;
     while (running) {
         int nav_x = 0, nav_y = 0, accept = 0, back = 0, quit = 0, show = 0;
+        int m_shuf = 0, m_rep = 0, m_skl = 0, m_skr = 0;   /* music actions */
         /* ctl remote intents, kept separate: they're trusted automation and
          * bypass the foreground gate that (rightly) suppresses stray pad
          * input from the background. Merged in after the gate. */
         int cx = 0, cy = 0, cacc = 0, cbk = 0, csh = 0;
+        int c_shuf = 0, c_rep = 0, c_skl = 0, c_skr = 0;
 
         reap_child(win);
 
         if (++ctl_tick >= 6) {          /* ~5x/sec is plenty */
             ctl_tick = 0;
-            poll_ctl(dir, &cx, &cy, &cacc, &cbk, &quit, &csh);
+            poll_ctl(dir, &cx, &cy, &cacc, &cbk, &quit, &csh,
+                     &c_shuf, &c_rep, &c_skl, &c_skr);
             if (quit) running = 0;
         }
 
@@ -542,6 +619,10 @@ int main(int argc, char *argv[])
                 case SDL_CONTROLLER_BUTTON_START:      accept = 1; break;
                 case SDL_CONTROLLER_BUTTON_B:          back = 1; break;
                 case SDL_CONTROLLER_BUTTON_BACK:       show = 1; break; /* SELECT */
+                case SDL_CONTROLLER_BUTTON_X:          m_shuf = 1; break; /* square */
+                case SDL_CONTROLLER_BUTTON_Y:          m_rep = 1; break;  /* triangle */
+                case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  m_skl = 1; break;
+                case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: m_skr = 1; break;
                 default: break;
                 }
                 break;
@@ -592,9 +673,15 @@ int main(int argc, char *argv[])
                 break;
             case SDL_JOYBUTTONDOWN:
                 if (is_mapped(e.jbutton.which)) break;
-                if (e.jbutton.button == 0) accept = 1;   /* A */
-                if (e.jbutton.button == 1) back = 1;     /* B */
-                if (e.jbutton.button == 8) show = 1;     /* SELECT (typical) */
+                /* raw fallback (padwiz layout): b2 cross, b1 circle, b0
+                 * triangle, b3 square, b4/b5 shoulders, b8 select */
+                if (e.jbutton.button == 2) accept = 1;   /* cross */
+                if (e.jbutton.button == 1) back = 1;     /* circle */
+                if (e.jbutton.button == 3) m_shuf = 1;   /* square */
+                if (e.jbutton.button == 0) m_rep = 1;    /* triangle */
+                if (e.jbutton.button == 4) m_skl = 1;    /* L1 */
+                if (e.jbutton.button == 5) m_skr = 1;    /* R1 */
+                if (e.jbutton.button == 8) show = 1;     /* SELECT */
                 break;
             }
         }
@@ -611,25 +698,28 @@ int main(int argc, char *argv[])
          * outside the launcher (or any other foreground app) must suppress
          * us too, so gate on the real foreground state, not just `child`. */
         if (GetForegroundWindow() != our_hwnd)
-            nav_x = nav_y = accept = back = 0;
+            nav_x = nav_y = accept = back = m_shuf = m_rep = m_skl = m_skr = 0;
 
         /* ctl remote is exempt from the gate (trusted, local-only). */
         if (!nav_x) nav_x = cx;
         if (!nav_y) nav_y = cy;
         accept |= cacc;
         back |= cbk;
+        m_shuf |= c_shuf; m_rep |= c_rep; m_skl |= c_skl; m_skr |= c_skr;
 
         /* Attract mode: after a while idle, cycle the library as an arcade
          * attract loop. The first input just wakes us (it doesn't also
          * navigate); music, if any, keeps playing underneath. */
         {
             Uint32 now = SDL_GetTicks();
-            int any_input = nav_x || nav_y || accept || back || show;
+            int any_input = nav_x || nav_y || accept || back || show
+                          || m_shuf || m_rep || m_skl || m_skr;
             if (any_input) last_input = now;
             if (attract) {
                 if (any_input) {
                     attract = 0;
                     nav_x = nav_y = accept = back = 0;   /* consume the wake */
+                    m_shuf = m_rep = m_skl = m_skr = 0;
                 } else if (now - attract_cycle_at > ATTRACT_CYCLE && n_games) {
                     attract_idx = (attract_idx + 1) % n_games;
                     attract_cycle_at = now;
@@ -680,17 +770,27 @@ int main(int argc, char *argv[])
                 screen = NOWPLAYING;
             }
         } else { /* NOWPLAYING */
-            if (nav_x < 0 || nav_y < 0)
-                play_song((cur_song - 1 + n_songs) % n_songs);
-            if (nav_x > 0 || nav_y > 0)
-                play_song((cur_song + 1) % n_songs);
-            if (accept) toggle_pause();
-            if (back) { sfx(sfx_back); screen = SLIST; }  /* music keeps going */
+            if (nav_x < 0) play_song((cur_song - 1 + n_songs) % n_songs); /* prev */
+            if (nav_x > 0) play_song(next_track());                       /* next */
+            if (nav_y < 0) change_vol(+5);      /* d-pad up   = louder */
+            if (nav_y > 0) change_vol(-5);      /* d-pad down = quieter */
+            if (accept) toggle_pause();         /* ✕ */
+            if (m_shuf) { mus_shuffle = !mus_shuffle; sfx(sfx_select); }   /* □ */
+            if (m_rep)  { mus_repeat = (mus_repeat + 1) % 3; sfx(sfx_select); } /* △ */
+            if (m_skl) do_seek(-10);            /* L1 */
+            if (m_skr) do_seek(+10);            /* R1 */
+            if (back) { sfx(sfx_back); screen = SLIST; }  /* ○ music keeps going */
         }
 
-        /* Auto-advance: when a track finishes (not paused), play the next. */
-        if (audio_ok && cur_song >= 0 && !mus_paused && !Mix_PlayingMusic())
-            play_song((cur_song + 1) % n_songs);
+        /* Auto-advance / repeat / stop-at-end when a track finishes. */
+        if (audio_ok && cur_song >= 0 && !mus_paused && !Mix_PlayingMusic()) {
+            if (mus_repeat == 2)                        /* repeat one */
+                play_song(cur_song);
+            else if (!mus_shuffle && cur_song == n_songs - 1 && mus_repeat == 0)
+                mus_paused = 1;                         /* end of list, stop */
+            else
+                play_song(next_track());
+        }
 
         SDL_Texture *t = tex_home[sel_home];
         if (screen == LIST)  t = tex_list[sel_list];
@@ -701,22 +801,54 @@ int main(int argc, char *argv[])
             t = tex_attract[attract_idx];
         if (t) SDL_RenderCopy(ren, t, NULL, NULL);
 
-        /* Live progress bar over the Now-Playing screen. Coords match
-         * PROG in gen-assets.py (logical 1024x768). */
-        if (!attract && screen == NOWPLAYING && cur_song >= 0 && track) {
-            double dur = Mix_MusicDuration(track);
-            double pos = song_pos();
-            if (dur > 0) {
-                double frac = pos / dur;
+        /* Live Now-Playing overlays (coords mirror gen-assets, logical space):
+         * progress fill + playhead, volume meter, play/pause state glyph,
+         * and shuffle/repeat active indicators on their face buttons. */
+        if (!attract && screen == NOWPLAYING && cur_song >= 0) {
+            if (track) {
+                double dur = Mix_MusicDuration(track);
+                double frac = dur > 0 ? song_pos() / dur : 0;
                 if (frac < 0) frac = 0;
                 if (frac > 1) frac = 1;
-                int w = (int)(724 * frac);
-                SDL_Rect fill = { 150, 636, w, 10 };
+                int w = (int)(PROG_W * frac);
                 SDL_SetRenderDrawColor(ren, 86, 156, 214, 255);
-                SDL_RenderFillRect(ren, &fill);
-                SDL_Rect knob = { 150 + w - 3, 631, 6, 20 };
+                SDL_Rect pf = { PROG_X, PROG_Y, w, PROG_H };
+                SDL_RenderFillRect(ren, &pf);
                 SDL_SetRenderDrawColor(ren, 235, 238, 245, 255);
+                SDL_Rect knob = { PROG_X + w - 3, PROG_Y - 6, 6, PROG_H + 12 };
                 SDL_RenderFillRect(ren, &knob);
+            }
+            /* volume meter fill */
+            SDL_SetRenderDrawColor(ren, 120, 200, 235, 255);
+            SDL_Rect vf = { VOL_X, VOL_Y, VOL_W * mus_vol / 100, VOL_H };
+            SDL_RenderFillRect(ren, &vf);
+            /* play/pause state glyph (▶ playing / ❚❚ paused) */
+            if (mus_paused) {
+                SDL_SetRenderDrawColor(ren, 232, 176, 74, 255);
+                SDL_Rect b1 = { STATE_X - 6, STATE_Y - 8, 4, 16 };
+                SDL_Rect b2 = { STATE_X + 2, STATE_Y - 8, 4, 16 };
+                SDL_RenderFillRect(ren, &b1);
+                SDL_RenderFillRect(ren, &b2);
+            } else {
+                fill_tri(ren, STATE_X - 5, STATE_Y - 8, STATE_X - 5,
+                         STATE_Y + 8, STATE_X + 8, STATE_Y, 120, 200, 235);
+            }
+            /* shuffle on: filled pink square on the □ button */
+            if (mus_shuffle) {
+                SDL_SetRenderDrawColor(ren, 214, 100, 168, 255);
+                SDL_Rect sq = { FB_SQR_X - 10, FB_SQR_Y - 10, 20, 20 };
+                SDL_RenderFillRect(ren, &sq);
+            }
+            /* repeat on: filled green triangle on the △ button (+ dot for one) */
+            if (mus_repeat) {
+                fill_tri(ren, FB_TRI_X, FB_TRI_Y - 11.0f,
+                         FB_TRI_X - 10.0f, FB_TRI_Y + 8.0f,
+                         FB_TRI_X + 10.0f, FB_TRI_Y + 8.0f, 77, 190, 122);
+                if (mus_repeat == 2) {
+                    SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+                    SDL_Rect dot = { FB_TRI_X - 2, FB_TRI_Y - 1, 4, 4 };
+                    SDL_RenderFillRect(ren, &dot);
+                }
             }
         }
         SDL_RenderPresent(ren);

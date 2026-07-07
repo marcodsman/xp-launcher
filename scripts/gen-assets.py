@@ -36,10 +36,19 @@ FG = (235, 238, 245)
 DIM = (110, 118, 138)
 ACCENT = (86, 156, 214)
 
-# Now-Playing progress bar geometry, in LOGICAL 1024x768 space (the C side
-# renders with SDL_RenderSetLogicalSize(1024,768) and draws the live fill at
-# these exact coords over the pre-rendered track). Keep the two in sync.
-PROG = {"x": 150, "y": 636, "w": 724, "h": 10}
+# Now-Playing geometry, in LOGICAL 1024x768 space (the C side renders with
+# SDL_RenderSetLogicalSize(1024,768) and draws the live fills / glyphs at
+# these exact coords over the pre-rendered art). Keep gen-assets and main.c
+# in sync — these constants are mirrored in src/main.c.
+PROG = {"x": 200, "y": 452, "w": 624, "h": 8}      # progress bar track
+VOL = {"x": 470, "y": 489, "w": 120, "h": 8}       # volume meter track
+STATE = (176, 456)                                  # play/pause glyph centre
+# face-button centres (the on-screen legend that mirrors the pad's right side)
+FBTN = {"tri": (512, 556), "sqr": (464, 592),
+        "cir": (560, 592), "cro": (512, 628), "r": 21}
+# PlayStation button colours (so the on-screen shapes match the pad)
+PS = {"tri": (77, 190, 122), "cir": (224, 78, 78),
+      "cro": (86, 140, 226), "sqr": (214, 100, 168)}
 
 SECTIONS = [
     ("GAMES",  (24, 130, 90),  (10, 52, 36)),
@@ -421,11 +430,33 @@ def list_screens(games, section="GAMES", prefix="list", tag="GAME"):
         save(img, f"{prefix}_{sel}")
 
 
+def face_button(d, cx, cy, r, shape, color):
+    """A DualShock-style button: dark disc + the coloured shape."""
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(46, 48, 62),
+              outline=(96, 100, 118), width=SS)
+    s = int(r * 0.52)
+    w = 3 * SS
+    if shape == "tri":
+        d.polygon([(cx, cy - s), (cx - s * 0.92, cy + s * 0.72),
+                   (cx + s * 0.92, cy + s * 0.72)], outline=color, width=w)
+    elif shape == "cir":
+        d.ellipse((cx - s, cy - s, cx + s, cy + s), outline=color, width=w)
+    elif shape == "sqr":
+        d.rectangle((cx - s * 0.82, cy - s * 0.82, cx + s * 0.82, cy + s * 0.82),
+                    outline=color, width=w)
+    elif shape == "cro":
+        d.line((cx - s, cy - s, cx + s, cy + s), fill=color, width=w)
+        d.line((cx - s, cy + s, cx + s, cy - s), fill=color, width=w)
+
+
 def nowplaying_screens(songs):
-    """One full-screen Now-Playing state per song: large album art, title,
-    NOW PLAYING tag, an empty progress-bar track (the C side fills it live),
-    and transport hints. prefix 'np'."""
+    """Full-screen Now-Playing per song: album art, title, progress + volume
+    tracks (C fills them live), and a controller legend whose face-button
+    diamond mirrors the pad's right side so it's obvious what each button
+    does. Live glyphs (play/pause, shuffle/repeat highlights) are drawn by
+    the engine at the mirrored coords. prefix 'np'."""
     n = len(songs)
+    lab = font(FONT_BOLD, 14)
     for sel in range(n):
         s = songs[sel]
         img = background()
@@ -433,38 +464,56 @@ def nowplaying_screens(songs):
         header(d)
         _, _, accent = game_colors(s["name"])
 
-        # large album art, centered upper area
-        art_w = art_h = 300 * SS
-        ax = (SW - art_w) // 2
-        ay = 190 * SS
-        r = 20 * SS
+        # album art, centered upper
+        art = 200 * SS
+        ax, ay = (SW - art) // 2, 150 * SS
+        r = 18 * SS
         shadow = Image.new("L", img.size, 0)
         ImageDraw.Draw(shadow).rounded_rectangle(
-            (ax + 6 * SS, ay + 12 * SS, ax + art_w + 6 * SS, ay + art_h + 14 * SS),
+            (ax + 5 * SS, ay + 10 * SS, ax + art + 5 * SS, ay + art + 12 * SS),
             radius=r, fill=140)
         img.paste(Image.new("RGB", img.size, (0, 0, 0)), (0, 0),
-                  shadow.filter(ImageFilter.GaussianBlur(14 * SS)))
-        art = cover_image(s, art_w, art_h)
-        img.paste(art, (ax, ay), rounded_mask(art_w, art_h, r))
+                  shadow.filter(ImageFilter.GaussianBlur(12 * SS)))
+        img.paste(cover_image(s, art, art), (ax, ay), rounded_mask(art, art, r))
         d = ImageDraw.Draw(img)
-        d.rounded_rectangle((ax, ay, ax + art_w - 1, ay + art_h - 1),
-                            radius=r, outline=accent, width=2 * SS)
+        d.rounded_rectangle((ax, ay, ax + art - 1, ay + art - 1), radius=r,
+                            outline=accent, width=2 * SS)
 
-        # NOW PLAYING tag + title, centered under the art
-        ty = ay + art_h + 30 * SS
-        d.text((SW // 2, ty), "NOW PLAYING", font=font(FONT_BOLD, 13),
-               fill=accent, anchor="mm")
-        d.text((SW // 2, ty + 34 * SS), s["name"], font=font(FONT_BOLD, 26),
-               fill=FG, anchor="mm")
+        d.text((SW // 2, (ay + art) + 24 * SS), "NOW PLAYING",
+               font=font(FONT_BOLD, 12), fill=accent, anchor="mm")
+        d.text((SW // 2, (ay + art) + 52 * SS), s["name"],
+               font=font(FONT_BOLD, 24), fill=FG, anchor="mm")
 
-        # empty progress-bar track (C fills the accent portion live)
-        px, py = PROG["x"] * SS, PROG["y"] * SS
-        pw, ph = PROG["w"] * SS, PROG["h"] * SS
-        d.rounded_rectangle((px, py, px + pw, py + ph), radius=ph // 2,
-                            fill=(48, 54, 72))
+        # progress + volume tracks (empty; engine fills live)
+        for g in (PROG, VOL):
+            x, y, w, h = g["x"] * SS, g["y"] * SS, g["w"] * SS, g["h"] * SS
+            d.rounded_rectangle((x, y, x + w, y + h), radius=h // 2,
+                                fill=(50, 56, 74))
+        # a speaker glyph left of the volume meter
+        vx, vy = VOL["x"] * SS, (VOL["y"] + VOL["h"] // 2) * SS
+        d.polygon([(vx - 26 * SS, vy - 5 * SS), (vx - 20 * SS, vy - 5 * SS),
+                   (vx - 14 * SS, vy - 11 * SS), (vx - 14 * SS, vy + 11 * SS),
+                   (vx - 20 * SS, vy + 5 * SS), (vx - 26 * SS, vy + 5 * SS)],
+                  fill=DIM)
 
-        hints(d, [("◀ ▶", "Prev / Next"), ("ENTER", "Play / Pause"),
-                  ("ESC", "Back")])
+        # --- controller legend: face-button diamond + labels ---
+        R = FBTN["r"] * SS
+        pts = {k: (FBTN[k][0] * SS, FBTN[k][1] * SS)
+               for k in ("tri", "sqr", "cir", "cro")}
+        for k in ("tri", "sqr", "cir", "cro"):
+            face_button(d, pts[k][0], pts[k][1], R, k, PS[k])
+        # labels around the diamond
+        d.text((pts["tri"][0], pts["tri"][1] - R - 14 * SS), "Repeat",
+               font=lab, fill=FG, anchor="mm")
+        d.text((pts["sqr"][0] - R - 10 * SS, pts["sqr"][1]), "Shuffle",
+               font=lab, fill=FG, anchor="rm")
+        d.text((pts["cir"][0] + R + 10 * SS, pts["cir"][1]), "Back",
+               font=lab, fill=FG, anchor="lm")
+        d.text((pts["cro"][0], pts["cro"][1] + R + 15 * SS), "Play / Pause",
+               font=lab, fill=FG, anchor="mm")
+
+        hints(d, [("◀ ▶", "Track"), ("▲ ▼", "Volume"),
+                  ("L1 R1", "Seek"), ("SELECT", "Home")])
         save(img, f"np_{sel}")
 
 
@@ -554,6 +603,17 @@ with open("games.json") as f:
 
 movies = scan_media("movies", VIDEO_EXT)
 songs = scan_media("music", AUDIO_EXT)
+
+# Off-network layout preview: when the share isn't mounted (no real media),
+# XPL_PREVIEW=1 fills placeholders so the media screens still render for
+# eyeballing. Real deploys (share mounted) always use the scanned media.
+if os.environ.get("XPL_PREVIEW"):
+    if not songs:
+        songs = [{"name": n, "box": "X"} for n in
+                 ("Ambient Drift", "Chiptune Menu", "Bassline Groove")]
+    if not movies:
+        movies = [{"name": n, "box": "X"} for n in
+                  ("Sample Film 1080p", "Nature 4K", "Test Clip")]
 
 home_screens()
 list_screens(config["games"])

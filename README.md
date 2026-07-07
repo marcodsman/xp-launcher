@@ -45,13 +45,16 @@ make kill       # stop it
   exit; SELECT summons it back over a running game.
 - **Movies** — browse video files scanned from `C:\XP_Share\media\movies`; selecting
   one hands off to MPC-HC (video wants the whole screen).
-- **Music** — browse tracks from `C:\XP_Share\media\music`, then a native **Now
-  Playing** screen: album art, title, a live progress bar, ENTER = play/pause,
-  ◀ ▶ = prev/next, ESC = back. Playback is **in-process** (SDL2_mixer), so it keeps
-  going while you browse elsewhere; tracks auto-advance and wrap. Formats:
-  **MP3 / WAV / OGG / FLAC / Opus** all work with the bundled `SDL2_mixer.dll`
-  (MP3 via the built-in **minimp3** decoder + ID3 tag parsing — no external codec
-  DLL needed).
+- **Music** — browse tracks from `C:\XP_Share\media\music`, then a native, fully
+  featured **Now Playing** screen. Playback is **in-process** (SDL2_mixer), so it
+  keeps going while you browse elsewhere. The screen shows an on-screen **controller
+  legend** — the four face buttons drawn in their real PlayStation diamond
+  (colours/shapes) so it's obvious what each does:
+  **✕ Play/Pause · □ Shuffle · △ Repeat (off→all→one) · ○ Back**; **d-pad ◀▶** skips
+  tracks, **d-pad ▲▼** is volume, **L1/R1** seek ±10s. Live overlays: progress bar +
+  playhead, volume meter, a ▶/❚❚ state glyph, and lit shuffle/repeat buttons.
+  Formats: **MP3 / WAV / OGG / FLAC / Opus** all work with the bundled
+  `SDL2_mixer.dll` (MP3 via the built-in **minimp3** decoder — no external DLL).
 - **Attract mode** — after 45 s idle the box cycles the library as full-bleed art
   frames with PRESS START; any input wakes it (and is consumed, so it doesn't also
   navigate). Music keeps playing underneath.
