@@ -118,6 +118,8 @@ SDL2_mixer DLLs + `assets/` (BMPs, `games.cfg`, `snd/`).
 - ✅ **SuperTux** — DONE. Modern build (worlds, powerups, editor) cross-compiled for XP at
   `../supertux-xp` with the SDL/D3D9 renderer; runs fullscreen (~176 FPS menu), single-player
   patched, in the launcher. (Old 0.1.3 still at `C:\supertux` as a fallback.)
+- ✅ **OpenTyrian** — DONE. Drop-in prebuilt XP binary (SDL 1.2 / DirectDraw) at
+  `C:\XP_Share\opentyrian`; freeware Tyrian 2.1 data bundled, gamepad-native, in the launcher.
 
 ### Couch-game candidates to try next (curated 2026-07-05)
 
@@ -130,7 +132,7 @@ Prefer native gamepad support.
   gamepad-perfect. Best content-per-effort; do this one next.
 - **Cave Story (NXEngine-evo)** ⭐ — beloved platformer, pad-native, **freeware data bundled**,
   runs on a potato.
-- **OpenTyrian** — vertical shmup, tiny, pad-perfect, near-certain drop-in.
+- ✅ **OpenTyrian** — DONE (see above). Vertical shmup, tiny, pad-perfect drop-in.
 - **Abuse** — run-'n-gun, SDL, old XP builds.
 - **Secret Maryo Chronicles** (old SDL 1.2 SMC — *not* the new SFML/OpenGL TSC) — Mario clone.
 

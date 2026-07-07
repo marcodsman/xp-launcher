@@ -109,6 +109,7 @@ GOG = {
                               ("unrated", "legacy of kain", "hearts of iron",
                                "victoria")),
     "legacy-of-kain-defiance": ("Legacy of Kain Defiance", "defiance (2003)", ()),
+    "opentyrian": ("Tyrian 2000", "tyrian", ()),   # OpenTyrian plays Tyrian
 }
 
 for slug, (query, guard, reject) in GOG.items():

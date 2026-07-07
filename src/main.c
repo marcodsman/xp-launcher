@@ -17,6 +17,7 @@
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include <SDL_mixer.h>
+#include <SDL_image.h>
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -147,9 +148,9 @@ static SDL_Texture *load_bmp(SDL_Renderer *ren, const char *dir,
 {
     char path[600];
     SDL_snprintf(path, sizeof path, "%s\\assets\\%s", dir, name);
-    SDL_Surface *s = SDL_LoadBMP(path);
+    SDL_Surface *s = IMG_Load(path);   /* screens are PNG now (~6x smaller) */
     if (!s) {
-        SDL_Log("load_bmp %s: %s", path, SDL_GetError());
+        SDL_Log("load_img %s: %s", path, IMG_GetError());
         return NULL;
     }
     SDL_Texture *t = SDL_CreateTextureFromSurface(ren, s);
@@ -526,26 +527,26 @@ int main(int argc, char *argv[])
 
     char name[64];
     for (int i = 0; i < 3; i++) {
-        SDL_snprintf(name, sizeof name, "home_%d.bmp", i);
+        SDL_snprintf(name, sizeof name, "home_%d.png", i);
         tex_home[i] = load_bmp(ren, dir, name);
     }
     for (int i = 0; i < n_games; i++) {
-        SDL_snprintf(name, sizeof name, "list_%d.bmp", i);
+        SDL_snprintf(name, sizeof name, "list_%d.png", i);
         tex_list[i] = load_bmp(ren, dir, name);
-        SDL_snprintf(name, sizeof name, "attract_%d.bmp", i);
+        SDL_snprintf(name, sizeof name, "attract_%d.png", i);
         tex_attract[i] = load_bmp(ren, dir, name);
     }
     for (int i = 0; i < n_movies; i++) {
-        SDL_snprintf(name, sizeof name, "movie_%d.bmp", i);
+        SDL_snprintf(name, sizeof name, "movie_%d.png", i);
         tex_movie[i] = load_bmp(ren, dir, name);
     }
     for (int i = 0; i < n_songs; i++) {
-        SDL_snprintf(name, sizeof name, "song_%d.bmp", i);
+        SDL_snprintf(name, sizeof name, "song_%d.png", i);
         tex_song[i] = load_bmp(ren, dir, name);
-        SDL_snprintf(name, sizeof name, "np_%d.bmp", i);
+        SDL_snprintf(name, sizeof name, "np_%d.png", i);
         tex_np[i] = load_bmp(ren, dir, name);
     }
-    tex_launch = load_bmp(ren, dir, "launch.bmp");
+    tex_launch = load_bmp(ren, dir, "launch.png");
 
     /* Audio: never fatal — if the device won't open, run silent. */
     if (Mix_OpenAudio(22050, AUDIO_S16SYS, 2, 1024) == 0) {

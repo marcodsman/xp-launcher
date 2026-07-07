@@ -4,7 +4,12 @@
 CC      = i686-w64-mingw32-gcc
 SDL     = vendor/SDL2
 CFLAGS  = -O2 -Wall -Wextra -I$(SDL)/include/SDL2 -Dmain=SDL_main
-LDFLAGS = -L$(SDL)/lib -lmingw32 -lSDL2main -lSDL2 -lSDL2_mixer -mwindows -static-libgcc
+LDFLAGS = -L$(SDL)/lib -lmingw32 -lSDL2main -lSDL2 -lSDL2_mixer -lSDL2_image -mwindows -static-libgcc
+
+# rsync mode for the slow SMBv1 share: skip files unchanged since last deploy
+# (by size+mtime — no content read), and whole-file copy the rest (never
+# delta-read the slow dest). --info=progress2 shows a live overall %.
+RSYNC = rsync -t --whole-file --info=progress2 -h
 
 BUILD   = build
 DEPLOY  = /media/Acer_Notebook/launcher
@@ -23,14 +28,22 @@ assets:
 	python3 scripts/gen-assets.py
 	python3 scripts/gen-sounds.py
 
-# Copy exe + SDL2.dll + assets onto the XP box via the SMB share.
-# Kills a running instance first: XP holds the exe/dll locked while running.
+# Copy exe + DLLs + assets onto the XP box via the SMB share. Over SMBv1 to
+# the old Atom box this is the slow part, so: PNG screens (~6x smaller than
+# BMP) + rsync that skips anything unchanged since last deploy. Kills a
+# running instance first (XP locks the exe/dll while running).
 deploy: all kill
-	mkdir -p $(DEPLOY)/assets/snd
-	cp $(BUILD)/launcher.exe $(SDL)/bin/SDL2.dll $(SDL)/bin/SDL2_mixer.dll $(DEPLOY)/
-	rm -f $(DEPLOY)/assets/*.bmp $(DEPLOY)/assets/games.cfg
-	cp assets/*.bmp assets/games.cfg $(DEPLOY)/assets/
-	cp assets/snd/*.wav $(DEPLOY)/assets/snd/
+	@echo "==> Deploying to the XP box  ($(DEPLOY))"
+	@mkdir -p $(DEPLOY)/assets/snd
+	@echo "--> [1/3] binaries (exe + SDL2/mixer/image DLLs)"
+	@$(RSYNC) $(BUILD)/launcher.exe $(SDL)/bin/SDL2.dll \
+		$(SDL)/bin/SDL2_mixer.dll $(SDL)/bin/SDL2_image.dll $(DEPLOY)/
+	@echo "--> [2/3] screens (PNG) + games.cfg  (only changed since last deploy)"
+	@$(RSYNC) assets/*.png assets/games.cfg $(DEPLOY)/assets/
+	@echo "--> [3/3] sounds"
+	@$(RSYNC) assets/snd/*.wav $(DEPLOY)/assets/snd/
+	@rm -f $(DEPLOY)/assets/*.bmp   # drop stale BMPs from the old format
+	@echo "==> Deploy complete."
 
 # Launch on the box (lands on the TV) and grab a screenshot to verify.
 run:

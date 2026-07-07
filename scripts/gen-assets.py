@@ -358,8 +358,21 @@ def hero_panel(img, game, x, y, w, h, tag="GAME"):
 
 
 def save(img, name):
-    img.resize((W, H), Image.LANCZOS).save(f"assets/{name}.bmp")
-    print(f"assets/{name}.bmp")
+    """Save a screen as PNG (~6x smaller than BMP over the slow SMB link).
+    Skips the write when the pixels are unchanged so the file keeps its old
+    mtime and `rsync` skips it on deploy — most deploys then push only the
+    few screens that actually changed."""
+    out = img.resize((W, H), Image.LANCZOS).convert("RGB")
+    path = f"assets/{name}.png"
+    if os.path.exists(path):
+        try:
+            old = Image.open(path).convert("RGB")
+            if old.size == out.size and old.tobytes() == out.tobytes():
+                return
+        except Exception:
+            pass
+    out.save(path)
+    print(path)
 
 
 def home_screens():
