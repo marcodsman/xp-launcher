@@ -59,11 +59,13 @@ make kill       # stop it
 Content comes from `games.json` + the `media/` folders (laptop side) →
 `assets/games.cfg` (box side). Add a game = edit `games.json`, `make deploy`.
 Real box art is a drop-in: put `covers/<slug>.{jpg,png}` and regenerate; otherwise
-a designed procedural cover is used. `scripts/fetch-covers.py` sources official
-portrait art from **Steam** (Quake 2, Grim Fandango, Abe's) and **GOG** (the Mortal
-Kombats, Jazz2, Heart of Darkness, Defiance) — GOG is the box's actual store, so the
-art matches. Sample media for testing lives in `media-samples/` (incl. a real MP3);
-`make deploy-media` pushes it to `C:\XP_Share\media` when you're home.
+a designed procedural cover is used. All 14 games have real art: `scripts/fetch-covers.py`
+pulls official portrait art from **Steam** (Quake 2, Grim Fandango, Abe's) and **GOG**
+(the Mortal Kombats, Jazz2, Heart of Darkness, Defiance) — GOG is the box's actual store,
+so the art matches; `scripts/compose-covers.py` builds covers for the three open-source
+games from their own official assets (SuperTux icon+logo, the SRB2 key-art banner, and a
+custom voxel scene for xp-craft). Sample media for testing lives in `media-samples/`
+(incl. a real MP3); `make deploy-media` pushes it to `C:\XP_Share\media` when you're home.
 
 ## Remote control (for Claude / scripting)
 
@@ -149,11 +151,12 @@ OpenTTD, OpenRCT2, CorsixTH — great games, wrong input for a pad).
 
 - ✅ **v2 (done)**: cover-art dashboard, UI sound + ambient bed, native music player
   with Now-Playing + live progress bar (MP3/OGG/FLAC/WAV), real Movies/Music sections,
-  attract mode, **real box art** for 11/14 games (`scripts/fetch-covers.py`, Steam +
-  GOG), resolution-independent rendering.
+  attract mode, **cover art for all 14 games** — official box art from Steam + GOG
+  (`scripts/fetch-covers.py`), and composed-from-official-assets covers for the three
+  open-source ones (`scripts/compose-covers.py`), resolution-independent rendering.
 - **Next / nice-to-have**: "CONTINUE?" last-played row; a batch **joy2key** mapper so
   keyboard-only games (Jazz2, Abe, Heart of Darkness) take the pad (see `GAME-AUDIT.md`);
-  music shuffle/queue; box art for the 3 open-source games (SuperTux/SRB2/xp-craft).
+  music shuffle/queue.
 - **v3**: boot-chain "cosplay" (shell replacement + fake console boot video) —
   prerequisite: convert freeSSHd/VNC to real services first so a bad shell swap
   can't lock us out (see ideas doc, safety notes).
