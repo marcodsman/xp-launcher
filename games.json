@@ -14,6 +14,7 @@
       "args": "-software -width 640 -height 400",
       "cwd": "C:\\XP_Share\\srb2" },
     { "name": "Sonic Robo Blast 2 (GPU)",
+      "slug": "sonic-robo-blast-2",
       "exe": "C:\\XP_Share\\srb2\\srb2d3d9.exe",
       "args": "-opengl -width 1024 -height 768 +fullscreen 1",
       "cwd": "C:\\XP_Share\\srb2" },

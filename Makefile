@@ -43,9 +43,17 @@ kill:
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all assets deploy run kill clean
+.PHONY: all assets deploy run kill clean shortcuts deploy-media
 
 # One-time install: desktop/start-menu/startup shortcuts on the box.
 shortcuts:
 	cp scripts/mklnk.vbs /media/Acer_Notebook/
 	~/bin/xprun 'cscript //nologo c:\XP_Share\mklnk.vbs'
+
+# Push staged sample media (incl. a real MP3) to the box's media folders.
+# Run when you're home and the share is mounted.
+deploy-media:
+	mkdir -p /media/Acer_Notebook/media/music /media/Acer_Notebook/media/movies
+	-cp media-samples/music/* /media/Acer_Notebook/media/music/ 2>/dev/null
+	-cp media-samples/movies/* /media/Acer_Notebook/media/movies/ 2>/dev/null
+	@echo "media deployed — re-run 'make deploy' to regenerate the music list"

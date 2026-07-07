@@ -49,9 +49,9 @@ make kill       # stop it
   Playing** screen: album art, title, a live progress bar, ENTER = play/pause,
   ◀ ▶ = prev/next, ESC = back. Playback is **in-process** (SDL2_mixer), so it keeps
   going while you browse elsewhere; tracks auto-advance and wrap. Formats:
-  **WAV / OGG / FLAC / Opus** work with the bundled DLL. **MP3** needs a 32-bit
-  `libmpg123-0.dll` dropped next to the exe (SDL2_mixer loads it dynamically) —
-  or convert the library to OGG/FLAC.
+  **MP3 / WAV / OGG / FLAC / Opus** all work with the bundled `SDL2_mixer.dll`
+  (MP3 via the built-in **minimp3** decoder + ID3 tag parsing — no external codec
+  DLL needed).
 - **Attract mode** — after 45 s idle the box cycles the library as full-bleed art
   frames with PRESS START; any input wakes it (and is consumed, so it doesn't also
   navigate). Music keeps playing underneath.
@@ -59,7 +59,11 @@ make kill       # stop it
 Content comes from `games.json` + the `media/` folders (laptop side) →
 `assets/games.cfg` (box side). Add a game = edit `games.json`, `make deploy`.
 Real box art is a drop-in: put `covers/<slug>.{jpg,png}` and regenerate; otherwise
-a designed procedural cover is used.
+a designed procedural cover is used. `scripts/fetch-covers.py` sources official
+portrait art from **Steam** (Quake 2, Grim Fandango, Abe's) and **GOG** (the Mortal
+Kombats, Jazz2, Heart of Darkness, Defiance) — GOG is the box's actual store, so the
+art matches. Sample media for testing lives in `media-samples/` (incl. a real MP3);
+`make deploy-media` pushes it to `C:\XP_Share\media` when you're home.
 
 ## Remote control (for Claude / scripting)
 
@@ -144,11 +148,12 @@ OpenTTD, OpenRCT2, CorsixTH — great games, wrong input for a pad).
 ## Roadmap
 
 - ✅ **v2 (done)**: cover-art dashboard, UI sound + ambient bed, native music player
-  with Now-Playing + live progress bar, real Movies/Music sections, attract mode,
-  designed procedural covers, resolution-independent rendering.
-- **Next / nice-to-have**: "CONTINUE?" last-played row; MP3 codec DLL; real box art
-  drop-ins; a batch **joy2key** mapper so keyboard-only games (Jazz2, Abe, Heart of
-  Darkness) take the pad (see `GAME-AUDIT.md`); music shuffle/queue.
+  with Now-Playing + live progress bar (MP3/OGG/FLAC/WAV), real Movies/Music sections,
+  attract mode, **real box art** for 11/14 games (`scripts/fetch-covers.py`, Steam +
+  GOG), resolution-independent rendering.
+- **Next / nice-to-have**: "CONTINUE?" last-played row; a batch **joy2key** mapper so
+  keyboard-only games (Jazz2, Abe, Heart of Darkness) take the pad (see `GAME-AUDIT.md`);
+  music shuffle/queue; box art for the 3 open-source games (SuperTux/SRB2/xp-craft).
 - **v3**: boot-chain "cosplay" (shell replacement + fake console boot video) —
   prerequisite: convert freeSSHd/VNC to real services first so a bad shell swap
   can't lock us out (see ideas doc, safety notes).
