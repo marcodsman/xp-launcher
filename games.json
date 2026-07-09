@@ -56,6 +56,8 @@
     { "name": "Mortal Kombat 4",
       "exe": "C:\\GOG Games\\Mortal Kombat 4\\mk4.exe" },
     { "name": "Mortal Kombat Trilogy",
+      "disabled": true,
+      "_disabled_reason": "Weird focus/background-contention issue (user 2026-07-09; matches the earlier 'unplayably slow' report). Disable until fixed.",
       "exe": "C:\\GOG Games\\Mortal Kombat Trilogy\\MKTRILW.EXE" },
     { "name": "Metal Slug 4",
       "slug": "metal-slug-4",
