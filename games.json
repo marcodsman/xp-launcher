@@ -48,6 +48,8 @@
       "args": "-conf \"..\\dosboxMortalKombat2.conf\" -conf \"..\\dosboxMortalKombat2_single.conf\" -noconsole -c exit",
       "cwd": "C:\\GOG Games\\Mortal Kombat 2\\DOSBOX" },
     { "name": "Mortal Kombat 3",
+      "disabled": true,
+      "_disabled_reason": "DOSBox dies immediately (user 2026-07-09) — same DOSBox cwd/conf issue family as MK1; not yet fixed",
       "exe": "C:\\GOG Games\\Mortal Kombat 3\\DOSBOX\\DOSBox.exe",
       "args": "-conf \"..\\dosboxMortalKombat3.conf\" -noconsole -c exit",
       "cwd": "C:\\GOG Games\\Mortal Kombat 3\\DOSBOX" },
