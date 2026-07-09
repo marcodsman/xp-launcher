@@ -29,7 +29,52 @@ Legend: ✅ works · ⚠️ works with caveat · ❌ broken · ❓ untested
 | Grim Fandango | ❌ | — | **Shows an error on screen** (user, 2026-07-05). GrimE engine — likely a DirectX/display init failure on the GMA500. Investigate (dgVoodoo/software wrapper?) or remove. |
 | Legacy of Kain: Defiance | ❓ | ❓ | 2003 D3D — GMA500 risk, likely won't render; verify |
 
+## Source-port / decomp survey for the misbehaving games (2026-07-09)
+
+Every candidate filtered through the box's hardware wall (Atom Z520 + GMA500 + XP:
+raw OpenGL any version ≈ 2 FPS = dead; SDL 1.2 / SDL2→D3D9/DirectDraw / software 2D = fine).
+
+**Real, viable fixes found (worth doing):**
+- **The Heart of Darkness → `hode`** (github.com/cyxx/hode) — ⭐ clean win. Faithful reimpl,
+  **SDL2 → D3D9** (the box's fast path, *not* GL), light 2D, **opens a gamepad automatically**
+  (`SDL_GameControllerOpen`) → directly fixes the "no controller" bug. Needs the retail HOD
+  data files (`hod.paf`, `setup.dat`, `*_hod.lvl/.sss/.mst`). Build/grab a Win32 SDL2 binary,
+  set fullscreen in `hode.ini`. **Best ROI of the whole survey.**
+- **Grim Fandango → ScummVM** (GrimE, ex-ResidualVM). Use the **Windows XP** build (2.7.0
+  known-good; XP was *not* dropped — only Win2000 was) with the **software (TinyGL) renderer**
+  so the dead GMA500 GL is never touched. Native gamepad (Controls tab). Needs the owned
+  LucasArts data. Only risk = software-3D framerate on the Atom → **perf-test to confirm**,
+  but it's the correct path (the current on-screen error goes away).
+- **Metal Slug 4 → OpenBOR freeware paks** (fits the OpenBOR expansion below): *Metal Slug
+  Beat Em Up*, *…Resistance*, *…Counter* — free, self-contained `.pak`, gamepad-native, 2D,
+  engine already proven on the box. (For the user's own legally-dumped Neo-Geo carts:
+  **WinKawaks 1.65** — XP-native, DirectDraw, DirectInput pad, full-speed on this class of CPU.)
+- **Contra → Nestopia (or FCEUX) on XP** — the `nes-contra-us` repo is a NES *disassembly*
+  that rebuilds a `.nes` ROM (needs the user's own cart dump); the realistic path is just
+  running that ROM in a lightweight XP NES emulator (DirectDraw, DirectInput pad, trivially
+  full-speed on the Atom). No PC port involved.
+
+**Dead ends (don't chase):**
+- **Jazz2 decomp** (Mustafa1177) — a **Ghidra project dump**, not a reimplementation. Nothing
+  to build/run. JJ2+ (blocked on the GOG Extra) remains the only real pad fix for JJ2.
+- **MK Trilogy "decompressor"** (Nightshades1) — **README-only research notes**, no code. The
+  box's MK Trilogy focus/slowdown is a separate XP compat-shim task, unrelated to this repo.
+- **Carmageddon → dethrace** — its default *software* renderer would technically run (GL is
+  opt-in/off), but there's **no controller support yet** (open issue) and CPU 3D driving is
+  too heavy for a 1.3 GHz in-order Atom. Skip until it matures.
+- **Abe's Oddysee → R.E.L.I.V.E.** — Win10 target; stays a joy2key case (unchanged).
+
+**New couch candidates surfaced from awesome-game-decompilations (all 2D, SDL, pad-native, no modern GL):**
+- **Cave Story → CSE2** (gameblabla low-end fork) — free assets, best overall fit. ⭐
+- **3D Pinball Space Cadet → SpaceCadetPinball** — SDL2→D3D9, needs the freely-available `pinball.dat`.
+- **Diablo → DevilutionX** — SDL1.2-buildable, superb pad UX; shareware `spawn.mpq` works
+  (verify XP build on-box). (Explicitly DEAD: RigelEngine, wipeout-rewrite, TRX/Tomb Raider,
+  re-plants-vs-zombies — all require OpenGL 3.x.)
+
 ## To do (deferred — user is spot-checking manually)
+- **Co-op / P2 across all games** (user, 2026-07-09): OpenBOR P2 was dead until bound to the
+  2nd pad (joy0). Audit every 2-player-capable game for the same — the Twin USB shows as two
+  independent joysticks (P1=joy1, P2=joy0); make sure each game's P2 is on the other pad.
 - Confirm/kill the ❓ rows.
 - Metal Slug 4: diagnose (missing dep? config?) or remove from the launcher.
 - Batch joy2key: pick a mapper, write one pad→keyboard profile, have the
