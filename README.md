@@ -128,8 +128,10 @@ DirectDraw 2D flies; raw OpenGL is dead (~2 FPS software); heavy 3D is out (Mine
 Prefer native gamepad support.
 
 **Tier A — likely drop-in (prebuilt XP binary, like SuperTux 0.1.3):**
-- **OpenBOR** ⭐ — beat-'em-up engine + huge free game library, **local co-op**, XP-native,
-  gamepad-perfect. Best content-per-effort; do this one next.
+- ✅ **OpenBOR** — DONE (2026-07-09). 2011 SDL 1.2 build (XP-safe) at `C:\XP_Share\openbor`
+  running freeware **Beats of Rage** (`BOR.PAK`). Pad works natively (co-op — two pads seen).
+  Windowed for now; fullscreen is the in-game Options→Video toggle (binary `BOR.cfg`). The
+  engine runs a huge free `.pak` library → each future game gets its own `games.json` entry.
 - **Cave Story (NXEngine-evo)** ⭐ — beloved platformer, pad-native, **freeware data bundled**,
   runs on a potato.
 - ✅ **OpenTyrian** — DONE (see above). Vertical shmup, tiny, pad-perfect drop-in.
