@@ -29,6 +29,31 @@ Legend: ✅ works · ⚠️ works with caveat · ❌ broken · ❓ untested
 | Grim Fandango | ❌ | — | **Shows an error on screen** (user, 2026-07-05). GrimE engine — likely a DirectX/display init failure on the GMA500. Investigate (dgVoodoo/software wrapper?) or remove. |
 | Legacy of Kain: Defiance | ❓ | ❓ | 2003 D3D — GMA500 risk, likely won't render; verify |
 
+## ⭐ Modern OpenBOR (SDL2 / 4.0) RUNS ON THE BOX — tested 2026-07-09
+
+**Correcting an earlier wrong assumption.** I had claimed the flashy OpenBOR games from
+the YouTube video (God of War Ragnarok, Justice League Legacy, Marvel Infinity War, etc.)
+"won't run on XP" because they need OpenBOR 4.0 (SDL2). **That was never tested** — OpenBOR 4.0
+had only failed to *extract on the laptop* (a RAR tooling issue; fixed now with RARLAB `unrar`).
+On-box reality (proven with `xprun`/`xpshot`):
+
+- **OpenBOR v3.0 build 6391 (SDL2, 2020)** and **build 6412 (2023, "GAMEnew")** both **launch and
+  render on the XP box.** The engine tries OpenGL, that fails on the GMA500 as expected, and it
+  **auto-falls-back to the SDL video backend (Direct3D9)** — the box's fast path. Log:
+  `Failed to load OpenGL function... falling back to SDL video backend` → `Initialized video`.
+- Verified rendering real frames: **Kill Bill** (old pak) and **God of War Ragnarok** (a 2024
+  *SDL2-only* pak) both draw correctly and detect the Twin USB Gamepad on both ports.
+- Bonus: the modern engine fullscreens via **`SDL_SetWindowFullscreen`** (SDL2 fullscreen-desktop,
+  no display-mode change) → also fixes the "OpenBOR exit breaks the launcher resolution" bug that
+  the old SDL 1.2 engine causes.
+
+**Implication:** all 15 games from the video are viable via the modern engine. Plan → standardize
+OpenBOR games on a modern SDL2 build (keeps XP compatibility, wider pak support, cleaner fullscreen).
+Open technical piece: the modern config is a different **352-byte** `Saves/<pak>.cfg` (+ a global
+`Default.cfg` that applies to all paks) — set fullscreen + pad there (reverse the new struct like the
+old one, or configure once via the engine's in-game options and capture). Test payloads staged on box:
+`C:\XP_Share\openbor-test6391`, `C:\XP_Share\gow-test`. Tooling: RARLAB static `unrar` in scratchpad.
+
 ## Source-port / decomp survey for the misbehaving games (2026-07-09)
 
 Every candidate filtered through the box's hardware wall (Atom Z520 + GMA500 + XP:
