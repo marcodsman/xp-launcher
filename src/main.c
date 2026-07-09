@@ -555,13 +555,9 @@ int main(int argc, char *argv[])
         sfx_select = load_sfx(dir, "select.wav");
         sfx_back   = load_sfx(dir, "back.wav");
         sfx_launch = load_sfx(dir, "launch.wav");
-        char mpath[600];
-        SDL_snprintf(mpath, sizeof mpath, "%s\\assets\\snd\\ambient.wav", dir);
-        bgm = Mix_LoadMUS(mpath);
-        if (bgm) {
-            Mix_VolumeMusic(MIX_MAX_VOLUME * 40 / 100);   /* soft bed */
-            Mix_PlayMusic(bgm, -1);
-        }
+        /* Intentionally silent on startup: no music/ambient bed plays until
+         * the user picks a track in the Music section. (The ambient bed used
+         * to auto-loop here, which felt like music playing itself on launch.) */
     } else {
         SDL_Log("Mix_OpenAudio: %s (running silent)", Mix_GetError());
     }
@@ -570,6 +566,7 @@ int main(int argc, char *argv[])
     int sel_home = 0, sel_list = 0, sel_mov = 0, sel_song = 0;
     int running = 1, axis_latch = 0;
     Uint32 last_input = SDL_GetTicks();    /* attract-mode idle timer */
+    Uint32 home_back_at = 0;               /* double-tap-to-exit arming time */
     int attract = 0, attract_idx = 0;
     Uint32 attract_cycle_at = 0;
 
@@ -735,7 +732,14 @@ int main(int argc, char *argv[])
         if (screen == HOME) {
             if (nav_x < 0 && sel_home > 0) sel_home--;
             if (nav_x > 0 && sel_home < 2) sel_home++;
-            if (back) running = 0;
+            /* The launcher is effectively the box's OS — a single stray Back
+             * (Circle / ESC) must NOT quit it. Require a deliberate double-tap
+             * within 1.5s; the first press just blips and arms the exit. */
+            if (back) {
+                Uint32 nowb = SDL_GetTicks();
+                if (nowb - home_back_at < 1500) running = 0;
+                else { home_back_at = nowb; sfx(sfx_back); }
+            }
             if (accept) {
                 if (sel_home == 0 && n_games > 0) {
                     sfx(sfx_select); screen = LIST; sel_list = 0;

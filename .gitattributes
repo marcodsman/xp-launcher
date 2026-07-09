@@ -1,0 +1,2 @@
+# On-box Windows game configs — preserve exact bytes (CRLF), no EOL conversion
+config/** -text

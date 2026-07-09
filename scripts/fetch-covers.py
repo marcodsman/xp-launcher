@@ -60,6 +60,7 @@ def fetch_steam_cover(appid, slug):
 # slug (matches gen-assets slug_of) -> Steam search query
 STEAM = {
     "quake-2": "Quake II",
+    "doom": "DOOM + DOOM II",   # classic art; launcher runs Crispy Doom + Freedoom data
     "grim-fandango": "Grim Fandango",
     "abe-s-oddysee": "Oddworld Abe's Oddysee",
     # Legacy of Kain: Defiance isn't on Steam (search returns the wrong LoK

@@ -135,6 +135,10 @@ Prefer native gamepad support.
 - ✅ **OpenTyrian** — DONE (see above). Vertical shmup, tiny, pad-perfect drop-in.
 - **Abuse** — run-'n-gun, SDL, old XP builds.
 - **Secret Maryo Chronicles** (old SDL 1.2 SMC — *not* the new SFML/OpenGL TSC) — Mario clone.
+- ✅ **Doom** — DONE (2026-07-09). **Crispy Doom 5.1** (last XP-compatible build; 5.12's
+  newer SDL2 fails to load on XP) + **Freedoom** data at `C:\XP_Share\doom`, software-rendered
+  (GMA500-safe), fullscreen verified on-box. Pad pre-configured PSX-style; needs a couch
+  confirm (analog LED on). *not* GZDoom — that's OpenGL = dead here.
 
 **Tier B — worth a SuperTux-style cross-compile (SDL2→D3D9, process now proven):**
 - **DevilutionX (Diablo 1)** ⭐ — SDL2, superb controller support (built for handhelds),

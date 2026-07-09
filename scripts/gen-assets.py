@@ -614,6 +614,12 @@ def games_cfg(cfg, movies, songs):
 with open("games.json") as f:
     config = json.load(f)
 
+# Disabled games stay in games.json (history + easy re-enable) but are hidden
+# from the launcher entirely: dropped before any screen/cfg generation so they
+# never render, never appear in games.cfg, and can't be launched. Flag a broken
+# game with "disabled": true rather than deleting it.
+config["games"] = [g for g in config["games"] if not g.get("disabled")]
+
 movies = scan_media("movies", VIDEO_EXT)
 songs = scan_media("music", AUDIO_EXT)
 
