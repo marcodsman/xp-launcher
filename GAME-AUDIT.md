@@ -54,6 +54,38 @@ Open technical piece: the modern config is a different **352-byte** `Saves/<pak>
 old one, or configure once via the engine's in-game options and capture). Test payloads staged on box:
 `C:\XP_Share\openbor-test6391`, `C:\XP_Share\gow-test`. Tooling: RARLAB static `unrar` in scratchpad.
 
+## OpenBOR library — 16 games added on the modern engine (2026-07-10)
+
+Standardized every OpenBOR game on **build 7533** (SDL2, D3D9-fallback), each its own
+`C:\XP_Share\openbor-<slug>` folder (engine + pak + pre-patched `Saves\<pak>.cfg`). All verified
+**fullscreen + rendering + pad-detected** on-box (button-feel = couch-confirm). Config template +
+engine + patcher in `config/openbor-modern/`. From the YouTube "15 OpenBOR games" video plus 2 bonuses:
+
+| Game | Runs | Pad | Source |
+|------|------|-----|--------|
+| Beats of Rage | ✅ | ✅ | migrated to 7533 (co-op P1/P2) |
+| Kill Bill | ✅ | ⚠️ | archive.org (couch-confirm pad) |
+| God of War Ragnarok | ✅ | ⚠️ | zvitor.com (2024 SDL2 pak — proof the modern engine runs) |
+| Castlevania: Legacy of Dracula | ✅ | ⚠️ | archive.org |
+| Thundercats | ✅ | ⚠️ | archive.org |
+| He-Man: Masters of the Universe | ✅ | ⚠️ | archive.org |
+| Justice League Legacy | ✅ | ⚠️ | mediafire |
+| Justice League United *(bonus)* | ✅ | ⚠️ | archive.org |
+| Marvel: First Alliance 2 *(bonus)* | ✅ | ⚠️ | archive.org |
+| Resident Evil: Survive | ✅ | ⚠️ | mediafire |
+| Tale of Vengeance | ✅ | ⚠️ | archive.org |
+| Crisis Evil: RE2 | ✅ | ⚠️ | archive.org |
+| Batman: Gotham Knights | ✅ | ⚠️ | archive.org |
+| X-Men: Hunter for Mutants | ✅ | ⚠️ | archive.org |
+| Mortal Kombat: Outworld Assassins XL | ✅ | ⚠️ | archive.org |
+| Alien vs Predator | ✅ | ⚠️ | zvitor.com |
+| ~~Marvel: Infinity War~~ | 🚫 disabled | — | 441MB pak memory-thrashes the 2GB box (55s+ load) — too heavy |
+
+**Not added (of the video's 15):** *Ultimate Double Dragon (Spawn & Shaq)* — the only download
+link (MediaFire) is **deleted**; needs an alternative source. *Golden Axe Myth* (a bonus) ships a
+`.spk` pak the 7533 engine wouldn't load — dropped. So **14 of the exact 15 are in** (all but UDD),
+plus 2 bonuses.
+
 ## Source-port / decomp survey for the misbehaving games (2026-07-09)
 
 Every candidate filtered through the box's hardware wall (Atom Z520 + GMA500 + XP:

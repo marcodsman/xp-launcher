@@ -128,10 +128,16 @@ DirectDraw 2D flies; raw OpenGL is dead (~2 FPS software); heavy 3D is out (Mine
 Prefer native gamepad support.
 
 **Tier A — likely drop-in (prebuilt XP binary, like SuperTux 0.1.3):**
-- ✅ **OpenBOR** — DONE (2026-07-09). 2011 SDL 1.2 build (XP-safe) at `C:\XP_Share\openbor`
-  running freeware **Beats of Rage** (`BOR.PAK`). Pad works natively (co-op — two pads seen).
-  Windowed for now; fullscreen is the in-game Options→Video toggle (binary `BOR.cfg`). The
-  engine runs a huge free `.pak` library → each future game gets its own `games.json` entry.
+- ✅ **OpenBOR** — DONE + EXPANDED (2026-07-10). **16 games** now, each its own launcher tile +
+  `C:\XP_Share\openbor-<slug>` folder. Standardized on the **modern SDL2 build 7533** — it runs on
+  XP (OpenGL fails on the GMA500 → auto-falls-back to Direct3D9), which unlocked the "OpenBOR 4.0"
+  games once assumed unrunnable, and fullscreens cleanly (SDL2 fullscreen-desktop). Fullscreen +
+  pad are pre-configured via a reverse-engineered 324-byte `Saves\<pak>.cfg` (see
+  `config/openbor-modern/`, `scripts/patch-openbor-config.py`). Library (from a "15 OpenBOR games"
+  video + 2 bonuses): Beats of Rage, Kill Bill, God of War Ragnarok, Castlevania, Thundercats,
+  He-Man, Justice League Legacy/United, Marvel First Alliance 2, Resident Evil Survive, Tale of
+  Vengeance, Crisis Evil, Batman, X-Men, MK Outworld Assassins XL, Alien vs Predator. `.rar` paks
+  need RARLAB `unrar` (p7zip 0-bytes them). See `GAME-AUDIT.md` for the full table.
 - **Cave Story (NXEngine-evo)** ⭐ — beloved platformer, pad-native, **freeware data bundled**,
   runs on a potato.
 - ✅ **OpenTyrian** — DONE (see above). Vertical shmup, tiny, pad-perfect drop-in.
